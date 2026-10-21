@@ -1,10 +1,10 @@
 ---
-title: "Install wi-mod on Windows and Linux"
+title: "How to Install wi-mod on Windows and Linux"
 sidebarTitle: "Installation"
 description: "Download the portable wi-mod executable for Windows (.exe) or Linux (.AppImage). No installer, no runtime dependencies — just run it."
 ---
 
-wi-mod ships as a single portable binary built with Tauri v2. There is no installer, no setup wizard, and no runtime to pre-install — download the file for your operating system and run it directly. Because everything the application needs is bundled inside the executable, you can store it on a USB drive, a network share, or any folder you like and it will work without modification.
+wi-mod ships as a single portable binary. There is no installer, no setup wizard, and no runtime to pre-install — download the file for your operating system and run it directly. Because everything the application needs is bundled inside the executable, you can store it on a USB drive, a network share, or any folder you like and it will work without modification.
 
 ## Download and Run
 
@@ -68,7 +68,7 @@ wi-mod ships as a single portable binary built with Tauri v2. There is no instal
 | Requirement | Windows | Linux |
 |---|---|---|
 | **OS version** | Windows 10 or later | Modern distribution (Ubuntu 22.04+, Fedora 38+, Arch) |
-| **WebKit runtime** | Bundled (via Tauri) | WebKitGTK 4.1 (`libwebkit2gtk-4.1`) |
+| **WebKit runtime** | Bundled in executable | WebKitGTK 4.1 (`libwebkit2gtk-4.1`) |
 | **Python** | Not required | Not required |
 | **Java / .NET / other** | Not required | Not required |
 | **Disk space** | ~20 MB | ~20 MB |
@@ -96,5 +96,5 @@ scripts\wi-mod.bat
 ```
 
 <Warning>
-  The Python shell is the **legacy path** maintained for development and testing only. End users should always use the Tauri portable executable from the Releases page, which requires no Python installation.
+  The Python shell is the **legacy path** maintained for development and testing only. End users should always use the portable executable from the Releases page, which requires no Python installation.
 </Warning>

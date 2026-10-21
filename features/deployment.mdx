@@ -1,7 +1,7 @@
 ---
-title: "Deploy Mods to Your Game's Data Folder"
+title: "Deploying Mods to Your Game's Data Folder with wi-mod"
 sidebarTitle: "Deployment"
-description: "wi-mod deploys active mods into a game's Data directory using hardlinks or symlinks, avoiding file duplication and enabling instant enable/disable without copying."
+description: "wi-mod deploys active mods into a game's Data folder using hardlinks or symlinks, avoiding file duplication and enabling instant enable/disable."
 ---
 
 Deployment is how wi-mod moves mod files from its own storage into the location the game reads at launch. Rather than copying files — which wastes disk space and makes updates slow — wi-mod creates **hardlinks** when the mod storage and the game directory are on the same physical disk, or **symlinks** when they are on different disks. Either way the game sees the files exactly where it expects them, and wi-mod retains full control: it can update, swap, or remove links instantly without touching any file the game or another tool created.

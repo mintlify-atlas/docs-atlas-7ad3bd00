@@ -1,5 +1,5 @@
 ---
-title: "Manage Minecraft Mods and Profiles with wi-mod"
+title: "Manage Minecraft Mod Profiles and Loaders with wi-mod"
 sidebarTitle: "Minecraft"
 description: "Create isolated Minecraft profiles, install mods from Modrinth or CurseForge, resolve dependencies automatically, and launch the game directly from wi-mod."
 ---
@@ -110,22 +110,16 @@ wi-mod can create profiles for the following mod loaders:
 
 ## Installing Mods into a Profile
 
-With a profile created and its loader installed, you can add mods from Modrinth directly into the profile's `.minecraft/mods/` folder:
+With a profile created and its loader installed, you can stage mods into the profile's `.minecraft/mods/` folder. The recommended workflow is:
 
-```
-POST /api/minecraft/profiles/install
-```
+1. Add mods to your wi-mod library from Modrinth or CurseForge using the **Add Mod** dialog or the in-app search (see [Adding Mods](/guides/adding-mods)).
+2. Assign those mods to a modpack whose name matches the profile name.
+3. At launch time, wi-mod automatically copies the active `.jar` files from the modpack into the instance's `.minecraft/mods/` folder via the `stage_mods()` step — no separate deployment step is needed for Minecraft profiles.
 
-For mods (as opposed to the loader itself), wi-mod uses the `ModManager` class to search Modrinth by project ID, Minecraft version, and loader. The install flow:
-
-1. Finds the latest version of the project that matches the requested Minecraft version and loader.
-2. Downloads the primary `.jar` file to `.minecraft/mods/{filename}.jar`.
-3. Iterates over the version's `dependencies` array. For every dependency with `dependency_type == "required"`, it recursively installs that project too.
-
-Dependency resolution is automatic — you only need to specify the top-level mod's project ID.
+wi-mod's internal `ModManager` supports resolving and downloading mods directly from Modrinth for `fabric`, `forge`, and `neoforge` loaders (Quilt is not supported by the mod installer). It finds the latest version matching the requested Minecraft version and loader, downloads the primary `.jar` to `.minecraft/mods/`, and recursively installs any `required` dependencies.
 
 <Tip>
-  Before installing a mod, use `GET /api/modrinth/search?q=&mc={version}&loader={loader}` to find its Modrinth project ID and confirm it is available for your target Minecraft version and loader combination.
+  Use `GET /api/modrinth/search?q=&mc={version}&loader={loader}` to browse available mods and confirm that the mod you want exists for your target Minecraft version and loader combination before adding it to your library.
 </Tip>
 
 ## Launching Minecraft

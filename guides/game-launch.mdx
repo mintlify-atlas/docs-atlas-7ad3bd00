@@ -1,7 +1,7 @@
 ---
-title: "Launch Games Directly from wi-mod"
+title: "Detect and Launch Games Directly from wi-mod Library"
 sidebarTitle: "Game Launch"
-description: "Set a game's executable path, detect it automatically, and launch it from wi-mod's library view — with mods already deployed."
+description: "Set a game's executable path or detect it automatically, then launch it from wi-mod's library view with mods already deployed to the right folder."
 ---
 
 wi-mod can detect and launch game executables directly from the library view. Once a launch path is set for a game, a single click opens the game — no need to switch to Steam, GOG Galaxy, or a file browser. For Minecraft profiles, wi-mod goes further and builds the full Java classpath before spawning the JVM.
@@ -136,7 +136,7 @@ POST /api/minecraft/launch
 
 See the [Minecraft guide](/guides/minecraft) for the full walkthrough, including offline UUID derivation, classpath construction from the version JSON, and JVM argument expansion.
 
-When you trigger `POST /api/game/launch` for a game domain that starts with `minecraft`, or when the stored `launchPath` contains `MinecraftLauncher` or `minecraft.exe`, wi-mod automatically routes through the Minecraft launch path. You must include the profile `instance` name in the request body in this case:
+When you trigger `POST /api/game/launch` for a game domain that starts with `minecraft`, or when the stored `launchPath` contains `MinecraftLauncher` or ends with `\minecraft.exe`, wi-mod automatically routes through the Minecraft launch path. You must include the profile `instance` name in the request body in this case:
 
 ```json
 {

@@ -1,7 +1,7 @@
 ---
-title: "External API Providers: Nexus, Modrinth, CurseForge, Steam, RAWG"
+title: "wi-mod External Provider Integrations and API Clients"
 sidebarTitle: "External Providers"
-description: "wi-mod proxies requests to five external mod APIs. In the Python runtime, requests go through wi_mod/ modules. In Tauri, through the fetch_external_api Rust command."
+description: "How wi-mod calls Nexus Mods, Modrinth, CurseForge, Steam, and RAWG: Python urllib modules, TypeScript typed clients, the Rust fetch_external_api command."
 ---
 
 wi-mod communicates with five external API providers to fetch mod metadata, search results, download links, and game cover art. The call path differs depending on which runtime is active. In the Python HTTP server, each provider has a dedicated module (`wi_mod/nexus.py`, `wi_mod/modrinth.py`, etc.) that makes direct `urllib.request` calls with the appropriate API key injected. In the Tauri desktop app, the TypeScript frontend routes every external request through a single Rust command (`fetch_external_api`) that acts as an authenticated proxy, keeping API keys out of the WebView's JavaScript context and bypassing browser CORS restrictions entirely.
@@ -18,7 +18,7 @@ wi-mod communicates with five external API providers to fetch mod metadata, sear
 | Steam | `https://api.steampowered.com` | Yes — `key` query param | Workshop metadata |
 | RAWG | `https://api.rawg.io` | Yes — `key` query param | Game metadata, cover art |
 
-Keys are stored in wi-mod settings (`apiKey`, `curseforgeApiKey`, `steamApiKey`, `rawgApiKey`). The server validates each key against the provider's own validation endpoint when the key is first saved via `PATCH /api/settings`.
+Keys are stored in wi-mod settings (`apiKey`, `curseforgeApiKey`, `steamApiKey`, `rawgApiKey`). The server validates each key against the provider's own validation endpoint when the key is first saved via `PUT /api/settings`.
 
 ---
 

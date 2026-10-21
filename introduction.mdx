@@ -1,10 +1,10 @@
 ---
-title: "wi-mod: Local Portable Mod Library Manager"
+title: "wi-mod: Local Portable Multi-Platform Mod Manager"
 sidebarTitle: "Introduction"
 description: "wi-mod is a privacy-first, offline mod library manager for PC games. Manage mods from Nexus Mods, Modrinth, CurseForge, Steam Workshop, and ModDB without cloud accounts."
 ---
 
-wi-mod is a local, portable, and unified mod library that gathers mod cards from multiple platforms — Nexus Mods, Modrinth, CurseForge, Steam Workshop, and ModDB — into a single hub on your PC. Rather than juggling a dozen browser tabs to track mods across games and sources, wi-mod lets you search, bookmark, and organise your entire multi-game collection in one place. It is not designed to replace advanced installation managers such as Mod Organizer 2 or Vortex; it is the **companion organisation tool** that sits alongside them, giving you a clean, offline-first library of everything you have found or plan to use.
+wi-mod is a local, portable, and unified mod library that gathers mod cards from multiple platforms — Nexus Mods, Modrinth, CurseForge, Steam Workshop, ModDB, and Independent sources — into a single hub on your PC. Rather than juggling a dozen browser tabs to track mods across games and sources, wi-mod lets you search, bookmark, and organise your entire multi-game collection in one place. It is not designed to replace advanced installation managers such as Mod Organizer 2 or Vortex; it is the **companion organisation tool** that sits alongside them, giving you a clean, offline-first library of everything you have found or plan to use.
 
 ## Key Features
 
@@ -16,7 +16,7 @@ wi-mod is a local, portable, and unified mod library that gathers mod cards from
     Runs entirely locally. All data is stored in SQLite (desktop) or IndexedDB (web demo). No cloud account required, no telemetry, no data ever leaves your machine.
   </Card>
   <Card title="Multi-Platform Integration" icon="globe">
-    Import mod cards and fetch rich metadata from Nexus Mods, Modrinth, CurseForge, Steam Workshop, and ModDB — all from a single interface.
+    Import mod cards and fetch rich metadata from Nexus Mods, Modrinth, CurseForge, Steam Workshop, ModDB, and Independent sources — all from a single interface.
   </Card>
   <Card title="Dynamic Themes" icon="palette">
     The UI automatically applies color schemes inspired by each platform's aesthetic, so Nexus Mods, Modrinth, and CurseForge each feel right at home.
@@ -25,7 +25,7 @@ wi-mod is a local, portable, and unified mod library that gathers mod cards from
     Ships with English and Spanish support out of the box. The active language is detected automatically from your system locale, with no manual setup needed.
   </Card>
   <Card title="Ultra-Lightweight" icon="bolt">
-    Built with Tauri v2 and Rust, wi-mod targets under 40 MB of RAM usage — a fraction of what a full browser-based tool would consume.
+    wi-mod is built to stay out of your way. The desktop shell runs on Python 3 with pywebview today, with an ongoing migration to Tauri v2 and Rust targeting under 40 MB of RAM.
   </Card>
 </CardGroup>
 
@@ -40,6 +40,7 @@ wi-mod can fetch metadata and save mod cards from the following sources:
 | **CurseForge** | Requires a free CurseForge API key |
 | **Steam Workshop** | Supported for tracking Workshop items |
 | **ModDB** | Supported for games such as Fallout 4, New Vegas, and S.T.A.L.K.E.R. |
+| **Independent** | Direct links to standalone mod pages outside the major platforms |
 
 The set of available platforms shown for each mod entry is automatically narrowed to those relevant to the game in question. For example, Minecraft mods surface Modrinth and CurseForge, while most Bethesda RPG mods surface Nexus Mods as the primary source.
 

@@ -1,5 +1,5 @@
 ---
-title: "wi-mod Settings Reference"
+title: "wi-mod Settings Reference: Keys, Language, Theme, Quit"
 sidebarTitle: "Settings"
 description: "All configurable options in wi-mod: API keys, language, theme, Nexus profile, and quit behavior. Settings are stored locally in data/settings.json."
 ---
@@ -40,7 +40,7 @@ The local server exposes two endpoints for reading and writing settings:
   <Card title="GET /api/settings" icon="arrow-down-to-line">
     Returns the current public settings object. API key values are **masked** to a short hint (e.g. `ab12…ef34`) so that the raw key is never exposed over the local HTTP interface. The response also includes boolean flags (`hasKey`, `hasRawgKey`, `hasCurseforgeKey`, `hasSteamKey`) and the full `profile` object.
   </Card>
-  <Card title="PATCH /api/settings" icon="pen-to-square">
+  <Card title="PUT /api/settings" icon="pen-to-square">
     Accepts a partial settings object. Only the fields present in the request body are updated. Each API key field is validated against its platform before being saved — if validation fails, the endpoint returns an error and the stored value is unchanged.
   </Card>
 </CardGroup>
@@ -78,7 +78,7 @@ Host: 127.0.0.1:47621
 ### Example: updating a key
 
 ```http
-PATCH /api/settings HTTP/1.1
+PUT /api/settings HTTP/1.1
 Host: 127.0.0.1:47621
 Content-Type: application/json
 
@@ -88,5 +88,5 @@ Content-Type: application/json
 ```
 
 <Note>
-  Full API key values are never returned by `GET /api/settings` — only the masked hint is included in the response. To rotate a key, enter the new value directly in the Settings panel or send it via `PATCH /api/settings`. The server validates the new key against the platform API before saving it.
+  Full API key values are never returned by `GET /api/settings` — only the masked hint is included in the response. To rotate a key, enter the new value directly in the Settings panel or send it via `PUT /api/settings`. The server validates the new key against the platform API before saving it.
 </Note>

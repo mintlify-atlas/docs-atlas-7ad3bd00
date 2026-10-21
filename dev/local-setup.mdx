@@ -1,7 +1,7 @@
 ---
-title: "Set Up wi-mod for Local Development"
+title: "wi-mod Local Development Environment and Dev Setup"
 sidebarTitle: "Local Setup"
-description: "Clone wi-mod, install dependencies for Python and Node, and run the dev server. Covers both the Tauri v2 path and the legacy Python/pywebview path."
+description: "Clone wi-mod, install Node.js and Python dependencies, then start the dev server. Covers Tauri v2 hot-reload and the legacy Python/pywebview dev path."
 ---
 
 wi-mod supports two development paths that share the same `web/` UI layer. The **Tauri v2 path** is the recommended approach — it compiles a Rust backend and serves the Vite frontend through a native window. The **legacy Python path** uses `app.py` with pywebview and remains fully functional while the Tauri migration is in progress. Choose the path that matches your contribution area; you can keep both running side by side in the same clone.

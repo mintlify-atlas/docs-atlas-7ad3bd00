@@ -1,7 +1,7 @@
 ---
-title: "wi-mod Internal HTTP API Reference"
+title: "wi-mod Local HTTP API: Complete Developer Reference"
 sidebarTitle: "API Reference"
-description: "Complete reference for wi-mod's local HTTP API served at 127.0.0.1. Documents all GET, POST, PUT, PATCH, and DELETE endpoints with parameters and response shapes."
+description: "Full reference for wi-mod's local HTTP API on 127.0.0.1: every GET, POST, PUT, PATCH, and DELETE endpoint with parameters and response shapes documented."
 ---
 
 wi-mod exposes a local-only HTTP server that listens exclusively on `127.0.0.1`. It is never reachable from the network and has no public endpoints. The Tauri WebView and the bundled web frontend both talk to it at runtime, but it is equally useful for scripting, testing, or integration work from any local process.
@@ -204,9 +204,9 @@ Returns the public settings object. API keys are masked (e.g. `"ab12…ef78"` or
 
 ---
 
-### `PATCH /api/settings`
+### `PUT /api/settings`
 
-Updates one or more settings fields. Each key is validated before being stored (e.g. Nexus API keys are verified against the Nexus validation endpoint; invalid keys are rejected with `400`). Only the fields you include in the body are updated.
+Updates one or more settings fields. Each key is validated before being stored (e.g. Nexus API keys are verified against the Nexus validation endpoint; invalid keys are rejected with `400`). Only the fields you include in the body are updated — unrecognized fields are ignored.
 
 **Updatable fields**
 
@@ -220,12 +220,6 @@ Updates one or more settings fields. Each key is validated before being stored (
 | `theme` | `string` | One of `nexus`, `modrinth`, `curseforge`, `steam`, `moddb`, `rawg` |
 
 **Response** — updated settings object (same shape as `GET /api/settings`).
-
-<Note>
-  `PATCH /api/settings` is the canonical way to update settings. The handler also
-  accepts `PUT /api/settings` for full-replacement semantics but behaves
-  identically — partial updates work in both cases.
-</Note>
 
 </Accordion>
 
@@ -256,9 +250,9 @@ Adds a new mod to the library. The server auto-fetches metadata from Nexus, Modr
 
 ---
 
-### `PUT /api/mods/:id`
+### `PATCH /api/mods/:id`
 
-Replaces editable fields on a mod. Equivalent to a full PUT — send only the fields you want to change; unrecognized fields are ignored. The `id` path parameter must be a 32-character hex UUID.
+Updates editable fields on a mod. Send only the fields you want to change; unrecognized fields are ignored. The `id` path parameter must be a 32-character hex UUID.
 
 **Response**
 

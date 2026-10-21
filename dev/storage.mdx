@@ -1,7 +1,7 @@
 ---
 title: "wi-mod Storage Layer: SQLite and IndexedDB Adapters"
 sidebarTitle: "Storage"
-description: "wi-mod uses a StorageAdapter interface with two implementations: TauriStorageAdapter (SQLite) for desktop and WebStorageAdapter (IndexedDB) for the web demo."
+description: "How wi-mod stores mod data: StorageAdapter interface, TauriStorageAdapter (SQLite) for desktop, WebStorageAdapter (IndexedDB) for the browser demo."
 ---
 
 wi-mod runs in two very different environments — as a native Tauri desktop app backed by SQLite, and as a plain browser-hosted web demo backed by IndexedDB. The storage abstraction layer lets the entire UI codebase share one set of data-access calls regardless of which runtime is active. This document covers the `StorageAdapter` contract, both implementations, how the right adapter is selected at startup, and how the Python HTTP server manages its own parallel data store.

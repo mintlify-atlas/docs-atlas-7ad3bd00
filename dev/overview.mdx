@@ -1,7 +1,7 @@
 ---
 title: "wi-mod Architecture: Local HTTP Server and Shared UI"
 sidebarTitle: "Overview"
-description: "wi-mod separates concerns into a local HTTP API (Python or Rust) and a shared HTML/CSS/JS frontend. Learn how these layers communicate and where data lives."
+description: "wi-mod separates concerns into a local HTTP API (Python or Rust) and a shared HTML/CSS/JS frontend. Learn how these layers communicate and where data lives"
 ---
 
 wi-mod is built around one core idea: a single shared UI (`web/`) that can be driven by two completely different backends — a Python HTTP server today, and a Tauri v2 Rust app tomorrow. The frontend never knows which runtime is underneath; it speaks plain HTTP fetch or Tauri `invoke()` calls, and the backend handles the rest.
@@ -96,7 +96,7 @@ The `StorageAdapter` interface in `src/services/storage/StorageAdapter.ts` abstr
 `tauri.conf.json` defines two windows:
 
 - **`main`** — the primary 1200 × 800 application window, starts hidden (`"visible": false`) until `destroy_splashscreen` is invoked.
-- **`splashscreen`** — a 500 × 500 frameless transparent window that is shown immediately on launch and dismissed once `lib.rs` has finished initializing app state.
+- **`splashscreen`** — a 500 × 500 frameless transparent window that is shown immediately on launch and dismissed when the frontend invokes the `destroy_splashscreen` command.
 
 ## Python entrypoint (`app.py`)
 

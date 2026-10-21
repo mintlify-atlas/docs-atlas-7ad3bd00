@@ -1,5 +1,5 @@
 ---
-title: "Import and Export Your wi-mod Library"
+title: "Import and Export Your wi-mod Mod Library as a Bundle"
 sidebarTitle: "Import / Export"
 description: "Back up your entire mod library or a filtered subset as a portable .wimod.zip bundle. Import it on any machine to restore mods instantly."
 ---
@@ -55,7 +55,7 @@ For `platform`, `game`, and `modpack` scopes, the catalog slice written to the b
     }
     ```
 
-    The bundle filename follows the pattern `wi-mod-{label}-{YYYYMMDD-HHMM}.zip`. For a `modpack` export the label becomes `wi-mod-pack-{modpackName}`. For a `selected` export it is `wi-mod-seleccion`.
+    The bundle filename follows the pattern `{label}-{YYYYMMDD-HHMM}.zip`. The label is computed from the scope: `wi-mod` for `all`, `wi-mod-{platform}` for `platform`, `wi-mod-{game}` for `game`, `wi-mod-pack-{modpackName}` for `modpack`, and `wi-mod-seleccion` for `selected`.
 
     The ZIP contains a `manifest.json` at the root, plus optional subdirectories for mod files (`mods/`), cover images (`fichas/`), modpack images (`modpacks/`), and catalog marks (`categories/`, `platforms/`).
   </Step>

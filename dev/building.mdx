@@ -1,7 +1,7 @@
 ---
-title: "Build and Package wi-mod for Distribution"
+title: "Building, Packaging, and Releasing wi-mod Desktop Apps"
 sidebarTitle: "Building"
-description: "Build wi-mod as a Tauri portable executable (Windows .exe, Linux AppImage/deb/rpm) or as a legacy PyInstaller bundle. Covers CI/CD and release tagging."
+description: "Package wi-mod as Tauri (Windows exe, Linux AppImage) or PyInstaller. Covers versioning in three files, GitHub Actions CI, and release draft publishing."
 ---
 
 wi-mod ships through two build paths. The **Tauri build** is the primary distribution path — it compiles the Rust backend, bundles the Vite frontend, and produces native installers for Windows and Linux. The **PyInstaller build** is the legacy path that produces a portable `dist/wi-mod/` directory using the Python runtime; it remains available while the Tauri migration is in progress. Both paths share the same `web/` UI source.

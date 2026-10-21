@@ -1,7 +1,7 @@
 ---
 title: "wi-mod Tech Stack: Python, Rust, TypeScript, and Vite"
 sidebarTitle: "Tech Stack"
-description: "wi-mod's technology choices: Python 3 with pywebview for the current desktop runtime, Tauri v2 and Rust for the migration target, and a shared HTML/JS/CSS frontend."
+description: "wi-mod technology choices: Python 3 with pywebview for the current desktop runtime, Tauri v2 and Rust for the migration target, and a shared frontend."
 ---
 
 wi-mod uses a dual-runtime approach: the currently shipping desktop binary is built with **Python 3 + pywebview**, while the in-progress migration target is **Tauri v2 + Rust**. Both runtimes serve the same `web/` UI layer, which is plain HTML, CSS, and JavaScript with no framework dependency. The Vite + TypeScript pipeline in `src/` is used exclusively for the Tauri build path and the GitHub Pages web demo.
