@@ -1,0 +1,61 @@
+---
+title: "UI Themes: Platform-Inspired Color Schemes"
+sidebarTitle: "Themes"
+description: "wi-mod includes six built-in themes inspired by Nexus Mods, Modrinth, CurseForge, Steam, ModDB, and RAWG. Switch themes in Settings."
+---
+
+wi-mod ships with six color themes, each inspired by one of the modding or gaming platforms it supports. Every theme defines five color roles — background, panel, text, accent, and ink — that are applied consistently across the app window and, on Windows, the system tray icon menu. The default theme on a fresh install is **nexus**. Switching themes is instant and requires no restart.
+
+## Available themes
+
+| Theme | Accent Color | Inspired by |
+|---|---|---|
+| `nexus` | `#e08a2c` — warm amber | Nexus Mods |
+| `modrinth` | `#1bd96a` — green | Modrinth |
+| `curseforge` | `#f16436` — orange-red | CurseForge |
+| `steam` | `#66c0f4` — light blue | Steam |
+| `moddb` | `#e10600` — red | ModDB |
+| `rawg` | `#f4f4f4` — light gray | RAWG |
+
+## Color roles
+
+Each theme is defined by five color values:
+
+| Role | Description |
+|---|---|
+| **bg** | Main window background |
+| **panel** | Card and sidebar panel backgrounds |
+| **text** | Primary body text |
+| **accent** | Highlight color — buttons, active states, links |
+| **ink** | Text rendered on top of the accent color |
+
+The exact values for every built-in theme are:
+
+| Theme | bg | panel | text | accent | ink |
+|---|---|---|---|---|---|
+| `nexus` | `#141210` | `#2e2a24` | `#f6efe6` | `#e08a2c` | `#1a1208` |
+| `modrinth` | `#16181c` | `#2c3036` | `#e8eef2` | `#1bd96a` | `#06210f` |
+| `curseforge` | `#121212` | `#2a2a2a` | `#f4ece8` | `#f16436` | `#2a100a` |
+| `steam` | `#171a21` | `#243447` | `#e8f4fc` | `#66c0f4` | `#0b1b28` |
+| `moddb` | `#140c0c` | `#301818` | `#f8f1f1` | `#e10600` | `#1a0808` |
+| `rawg` | `#151515` | `#2a2a2a` | `#ffffff` | `#f4f4f4` | `#151515` |
+
+## How to switch themes
+
+<Steps>
+  <Step title="Open Settings">
+    Click the **Settings** icon in the wi-mod sidebar.
+  </Step>
+  <Step title="Select a theme">
+    Find the **Theme** dropdown and choose any of the six options.
+  </Step>
+  <Step title="See the change instantly">
+    The theme applies immediately across the entire interface — no save button required and no restart needed.
+  </Step>
+</Steps>
+
+The active theme name is stored in `data/settings.json` under the `theme` key and is also returned by `GET /api/settings`.
+
+<Note>
+  On Windows, the system tray icon context menu also adapts to the active theme. Background, panel, text, accent, and ink colors are applied to the tray menu's renderer whenever the menu opens, so the tray experience stays consistent with the rest of the app.
+</Note>

@@ -1,0 +1,254 @@
+---
+title: "wi-mod Storage Layer: SQLite and IndexedDB Adapters"
+sidebarTitle: "Storage"
+description: "wi-mod uses a StorageAdapter interface with two implementations: TauriStorageAdapter (SQLite) for desktop and WebStorageAdapter (IndexedDB) for the web demo."
+---
+
+wi-mod runs in two very different environments — as a native Tauri desktop app backed by SQLite, and as a plain browser-hosted web demo backed by IndexedDB. The storage abstraction layer lets the entire UI codebase share one set of data-access calls regardless of which runtime is active. This document covers the `StorageAdapter` contract, both implementations, how the right adapter is selected at startup, and how the Python HTTP server manages its own parallel data store.
+
+---
+
+## The `StorageAdapter` Interface
+
+The `StorageAdapter` interface (defined in `src/services/storage/StorageAdapter.ts`) is the single contract that both implementations must fulfill.
+
+```typescript
+export interface StorageAdapter {
+  /** Opens the database / object stores. Idempotent — safe to call multiple times. */
+  init(): Promise<void>;
+
+  getMods(gameId?: string): Promise<Mod[]>;
+  saveMod(mod: Mod): Promise<void>;
+  deleteMod(modId: string): Promise<void>;
+
+  getSettings(): Promise<Settings>;
+  saveSettings(settings: Settings): Promise<void>;
+}
+```
+
+`gameId` is the Nexus / RAWG `gameDomain` string (e.g. `skyrimspecialedition`). When passed to `getMods`, it filters results to that game. Omitting it returns all mods.
+
+---
+
+## `TauriStorageAdapter` — Desktop (SQLite)
+
+`TauriStorageAdapter` (in `src/services/storage/TauriStorageAdapter.ts`) uses `@tauri-apps/plugin-sql` to open a SQLite database named `wi-mod.db`. The schema is created on first open:
+
+```sql
+CREATE TABLE IF NOT EXISTS mods (
+  id          TEXT PRIMARY KEY NOT NULL,
+  game_domain TEXT NOT NULL DEFAULT '',
+  payload     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mods_game ON mods(game_domain);
+
+CREATE TABLE IF NOT EXISTS settings (
+  id      INTEGER PRIMARY KEY CHECK (id = 1),
+  payload TEXT NOT NULL
+);
+```
+
+Each mod is stored as a JSON blob in the `payload` column alongside its `game_domain` index column, which lets the adapter filter by game with a single indexed query:
+
+```typescript
+// Filtered by game
+const rows = await db.select<{ id: string; payload: string }[]>(
+  "SELECT id, payload FROM mods WHERE game_domain = $1 ORDER BY id",
+  [domain],
+);
+
+// All mods
+const rows = await db.select<{ id: string; payload: string }[]>(
+  "SELECT id, payload FROM mods ORDER BY id",
+);
+```
+
+`saveMod` uses an upsert (`INSERT … ON CONFLICT(id) DO UPDATE`) so the same call handles both creation and update:
+
+```typescript
+await db.execute(
+  `INSERT INTO mods (id, game_domain, payload) VALUES ($1, $2, $3)
+   ON CONFLICT(id) DO UPDATE SET game_domain = excluded.game_domain, payload = excluded.payload`,
+  [mod.id, domain, payload],
+);
+```
+
+Settings are stored as a single row with `id = 1` using the same upsert pattern.
+
+<Note>
+  The SQLite schema is also declared in Rust-side Tauri migrations under
+  `src-tauri`. The TypeScript adapter creates tables itself with `IF NOT EXISTS`
+  guards so the two definitions stay in sync without migrations being required
+  on every startup.
+</Note>
+
+---
+
+## `WebStorageAdapter` — Browser (IndexedDB)
+
+`WebStorageAdapter` (in `src/services/storage/WebStorageAdapter.ts`) targets the browser's IndexedDB API. It opens a database named `wi-mod` (version 1) with two object stores:
+
+```
+mods      — keyPath: "id",   index: "gameDomain" (non-unique)
+settings  — keyPath: "id"
+```
+
+The adapter stores full `Mod` objects directly as IndexedDB records. The `gameDomain` index enables the same filtered-by-game query path that the SQLite adapter provides:
+
+```typescript
+const req = domain
+  ? store.index("gameDomain").getAll(domain)
+  : store.getAll();
+```
+
+Settings are stored under the fixed key `"app"` in the `settings` store.
+
+**LocalStorage fallback** — if `indexedDB` is `undefined` (some non-standard environments), the adapter sets `useLocalStorage = true` and falls back to `localStorage` with the keys `wi-mod-web-mods` (JSON array) and `wi-mod-web-settings` (JSON object). This path is only expected to occur in limited test or SSR scenarios.
+
+---
+
+## Runtime Selection
+
+`getStorageAdapter()` in `src/services/runtime.ts` inspects `window.__TAURI_INTERNALS__` to decide which adapter to instantiate:
+
+<Steps>
+  <Step title="Check for Tauri">
+    At startup, the frontend checks `typeof window.__TAURI_INTERNALS__ !== 'undefined'`.
+  </Step>
+  <Step title="Desktop path">
+    If Tauri internals are present, a `TauriStorageAdapter` is created and `init()` is called, which loads the SQLite plugin and applies the schema.
+  </Step>
+  <Step title="Web path">
+    If running in a plain browser, a `WebStorageAdapter` is created and `init()` opens (or creates) the IndexedDB database.
+  </Step>
+</Steps>
+
+The selected adapter is kept as a module-level singleton and injected wherever the UI code needs data access. No code outside `src/services/storage/` needs to know which implementation is in use.
+
+---
+
+## Python-Side Storage (`wi_mod/store.py`)
+
+The Python HTTP server maintains its own data store, which is independent of the TypeScript storage layer. The `Library` class in `wi_mod/store.py` manages all server-side persistence.
+
+**SQLite database — `data/wi-mod.sqlite`**
+
+The server uses SQLite for session management (users, sessions, and a generic key-value table). The schema:
+
+```sql
+CREATE TABLE IF NOT EXISTS kv (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  username      TEXT PRIMARY KEY,
+  password_hash TEXT NOT NULL,
+  role          TEXT NOT NULL,
+  created_at    TEXT NOT NULL,
+  password_len  INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token      TEXT PRIMARY KEY,
+  username   TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT
+);
+```
+
+The `kv` table stores the full library JSON and settings JSON under the keys `"library"` and `"settings"` respectively. This means the JSON store is embedded inside SQLite rather than written to separate flat files.
+
+**Legacy flat-file migration** — on first startup, if `library.json` or `settings.json` exist in the data directory (from an older build), their contents are imported into the `kv` table and the `.json` files are left in place but no longer written to.
+
+**Password hashing** — user passwords are hashed with PBKDF2-HMAC-SHA256, 120 000 iterations, 16-byte random salt. The format stored in `password_hash` is `pbkdf2$<salt_hex>$<digest_hex>`.
+
+**Session tokens** — generated with `secrets.token_urlsafe(32)`. Remember-me sessions expire after 60 days; non-remembered sessions have no expiry timestamp and persist until logout.
+
+---
+
+## The `Mod` Type
+
+<Tip>
+  The `Mod` interface is defined in `src/services/storage/types.ts`. Use the
+  `blankMod(partial?)` helper to create a new mod object with all required
+  fields pre-populated with safe defaults. Passing a `Partial<Mod>` lets you
+  override only the fields you care about:
+
+  ```typescript
+  import { blankMod } from "@/services/storage/types";
+
+  const mod = blankMod({
+    name: "SkyUI",
+    platform: "Nexus",
+    gameDomain: "skyrimspecialedition",
+  });
+  ```
+
+  `blankMod` generates a random hex UUID for `id` using `crypto.randomUUID()`
+  when available, falling back to a timestamp+random string in environments
+  that do not expose the Web Crypto API.
+</Tip>
+
+The full `Mod` interface mirrors the Python `Library._blank()` method field-for-field:
+
+```typescript
+export interface Mod {
+  id: string;
+  nexusUrl: string;
+  platform: string;
+  gameDomain: string;
+  gameName: string;
+  modId: number | string | null;
+  name: string;
+  summary: string;
+  summaryEs: string;
+  author: string;
+  category: string;
+  categoryEs: string;
+  categorySource: string;
+  version: string;
+  updatedAt: string | null;
+  createdAt: string | null;
+  endorsements: number;
+  downloads: number;
+  uniqueDownloads: number;
+  pictureFile: string | null;
+  pictureUrl: string | null;
+  filesUrl: string;
+  primaryFileId: number | string | null;
+  primaryFileName: string | null;
+  modpackId: string;
+  modpackCategoryId: string;
+  modpack: string;
+  modpackNotes: string;
+  notes: string;
+  techNotes: string;
+  compatNotes: string;
+  emoji: string;
+  skill: string;
+  rule: string;
+  files: ModFile[];
+  addedAt: string;
+  fetchedAt: string | null;
+  checkedAt: string | null;
+  updateAvailable: boolean;
+  remoteVersion: string;
+  [key: string]: unknown;
+}
+```
+
+The `[key: string]: unknown` index signature allows the type to carry extra fields returned by external APIs without breaking the TypeScript type checker.
+
+---
+
+## Migration Roadmap
+
+<Note>
+  Once the Tauri migration is complete, the Python JSON / SQLite hybrid store
+  will be replaced entirely by the `TauriStorageAdapter`. The frontend will
+  read and write all mod data directly through the TypeScript storage layer,
+  and the Python server will only be responsible for launching external
+  processes (game launcher, Java install, deploy hooks) rather than owning the
+  primary data store.
+</Note>

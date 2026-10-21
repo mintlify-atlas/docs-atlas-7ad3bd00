@@ -1,0 +1,121 @@
+---
+title: "Adding Mods from Nexus, Modrinth, CurseForge, and More"
+sidebarTitle: "Adding Mods"
+description: "Save mods from Nexus Mods, Modrinth, CurseForge, Steam Workshop, and ModDB to your wi-mod library by URL or in-app search."
+---
+
+There are two ways to add a mod to your wi-mod library: paste a URL from any supported platform, or use the built-in search to browse Nexus Mods, Modrinth, or CurseForge without leaving the app. Both paths end with the same result — a saved entry in your local SQLite library that you can manage, deploy, and export.
+
+## By URL
+
+Pasting a URL works for every platform wi-mod supports: Nexus Mods, Modrinth, CurseForge, ModDB, and any standalone mod page hosted over HTTPS.
+
+<Steps>
+  <Step title="Copy the mod URL from the platform">
+    Navigate to the mod's page and copy the URL from your browser's address bar. wi-mod recognises the following patterns automatically:
+
+    | Platform | URL pattern |
+    |---|---|
+    | Nexus Mods | `https://www.nexusmods.com/{game}/mods/{id}` |
+    | Modrinth | `https://modrinth.com/{type}/{slug}` |
+    | CurseForge | `https://www.curseforge.com/{game}/{type}/{slug}` |
+    | ModDB | Any ModDB page URL (metadata entered manually — no API) |
+    | Standalone | Any `https://` URL for independent mod pages |
+  </Step>
+  <Step title="Paste the URL into the Add Mod dialog">
+    Open the **Add Mod** dialog inside wi-mod and paste the URL into the URL field.
+  </Step>
+  <Step title="wi-mod fetches metadata">
+    wi-mod calls `POST /api/preview` with the URL. The server inspects the URL pattern and dispatches to the appropriate source:
+
+    - **Nexus** — fetches the mod record and the primary file from the Nexus REST API (requires your API key).
+    - **Modrinth** — calls the public Modrinth API; no key required.
+    - **CurseForge** — calls the CurseForge v1 API (requires your CurseForge API key).
+    - **ModDB / standalone** — fetches the page HTML and extracts the `<title>` and `<meta name="description">` tags.
+
+    The preview response includes the mod name, summary, author, category, version, download count, and a `duplicate` flag if the mod is already in your library.
+  </Step>
+  <Step title="Confirm to save">
+    Review the metadata in the preview panel. Click **Save** to persist the entry. wi-mod calls `POST /api/mods` and writes the record to the local database. The mod appears immediately in your library.
+  </Step>
+</Steps>
+
+## Via In-App Search
+
+The search panel lets you discover mods on Nexus Mods, Modrinth, and CurseForge without opening a browser.
+
+<Tabs>
+  <Tab title="Nexus Mods">
+    Nexus search requires a Nexus Mods API key saved in **Settings → API key**.
+
+    The search endpoint is:
+
+    ```
+    GET /api/nexus/search?q={query}&game={gameDomain}
+    ```
+
+    wi-mod sends a GraphQL query to the Nexus v2 API, filtering by game domain and sorting by download count. Each result includes `modId`, `name`, `summary`, `author`, `version`, `downloads`, `endorsements`, `pictureUrl`, and `gameDomain`.
+
+    Results also include a `savedId` field. If the mod is already in your library, `savedId` contains its local ID so the UI can highlight it and prevent accidental duplicates.
+
+    Click any result to open the preview panel, then **Save** to add it to your library via `POST /api/mods`.
+  </Tab>
+  <Tab title="Modrinth">
+    Modrinth search uses the public Modrinth API — no key needed.
+
+    The search endpoint is:
+
+    ```
+    GET /api/modrinth/search?q={query}&mc={minecraftVersion}&loader={loader}
+    ```
+
+    You can filter by Minecraft version (`mc`) and mod loader (`loader`). Supported loader values are `forge`, `fabric`, `quilt`, and `neoforge`. wi-mod constructs Modrinth facets from these filters automatically.
+
+    Each result includes `name`, `author`, `summary`, `downloads`, `pictureUrl`, and `url`. The `savedId` field is populated if the mod URL already exists in your library.
+  </Tab>
+  <Tab title="CurseForge">
+    CurseForge search requires a CurseForge API key saved in **Settings → CurseForge key**.
+
+    The search endpoint is:
+
+    ```
+    GET /api/curseforge/search?q={query}&game={gameDomain}&mc={minecraftVersion}&loader={loader}
+    ```
+
+    Filter by `game` (CurseForge game domain), Minecraft version (`mc`), and loader (`forge`, `fabric`, `quilt`, `neoforge`). Loader values map to CurseForge's internal `modLoaderType` IDs automatically.
+
+    Each result includes `name`, `author`, `summary`, `downloads`, `pictureUrl`, `url`, and `gameDomain`. The `savedId` field marks mods already in your library.
+  </Tab>
+</Tabs>
+
+## Refreshing Metadata
+
+When a mod receives an update on its source platform, your local record stays at the version that was saved. To sync the latest metadata, call:
+
+```
+POST /api/refresh
+```
+
+wi-mod iterates over every mod that has a Nexus, Modrinth, or CurseForge URL and re-fetches the remote record. The response reports how many mods were checked, how many have an available update, and any that failed. A `changed` flag is set on each mod entry when a newer version or file ID is detected.
+
+To refresh a single mod, use `POST /api/mods/{id}/refresh`.
+
+## Translating Descriptions
+
+wi-mod can translate a mod's English summary to Spanish using the free MyMemory translation service — no API key required.
+
+```
+POST /api/translate
+```
+
+Send `{ "text": "...", "source": "en", "target": "es" }`. The translated string is returned in the `text` field. When you translate a mod via the per-mod endpoint (`POST /api/mods/{id}/translate`), the result is saved automatically to the `summaryEs` field.
+
+Text is capped at 8,000 characters per request.
+
+## Uploading Local Files
+
+If you already have a mod archive downloaded from a browser, you can attach it to an existing library entry without going through an API download. Open the mod detail panel, click **Upload file**, and select your `.zip`, `.jar`, `.rar`, or other archive. wi-mod stores the file and links it to the mod record.
+
+<Tip>
+  Pay attention to the `savedId` field returned by all three search endpoints. When a result carries a non-empty `savedId`, that mod is already in your library — the UI highlights it so you don't create a duplicate entry. If you want a second copy (for example, a different version), use the **Duplicate** action on the existing entry instead.
+</Tip>

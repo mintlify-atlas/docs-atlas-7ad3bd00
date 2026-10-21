@@ -1,0 +1,92 @@
+---
+title: "wi-mod Settings Reference"
+sidebarTitle: "Settings"
+description: "All configurable options in wi-mod: API keys, language, theme, Nexus profile, and quit behavior. Settings are stored locally in data/settings.json."
+---
+
+wi-mod stores all user preferences in a single JSON file — `data/settings.json` — located in the `data/` directory next to the executable. Settings cover API keys for each supported platform, the UI language, the active color theme, quit behavior, and a cached snapshot of your Nexus Mods profile. You can change any setting through the **Settings** panel in the app; changes take effect immediately without restarting.
+
+## Settings fields
+
+| Field | Type | Description |
+|---|---|---|
+| `apiKey` | `string` | Nexus Mods API key. Required for all Nexus features. |
+| `curseforgeApiKey` | `string` | CurseForge API key. Required for CurseForge search and download. |
+| `rawgApiKey` | `string` | RAWG API key. Used to fetch game cover art and descriptions. |
+| `steamApiKey` | `string` | Steam Web API key. Used for Steam Workshop metadata. |
+| `language` | `"en"` or `"es"` | UI display language. Auto-detected from system locale on first run. |
+| `theme` | `"nexus"` / `"modrinth"` / `"curseforge"` / `"steam"` / `"moddb"` / `"rawg"` | Active UI color theme. Defaults to `nexus`. |
+| `quitMode` | `string` | Controls what happens when the window is closed: send to system tray (`tray`) or exit the process (`quit`). |
+| `profile.name` | `string` | Nexus Mods username, populated automatically when the Nexus API key is validated. |
+| `profile.isPremium` | `boolean` | Whether the Nexus account holds a Premium subscription. |
+| `profile.hourlyRemaining` | `number` | Remaining API calls allowed in the current hour. |
+| `profile.hourlyLimit` | `number` | Total hourly API call allowance for the account. |
+| `profile.dailyRemaining` | `number` | Remaining API calls allowed today. |
+| `profile.dailyLimit` | `number` | Total daily API call allowance for the account. |
+
+## Language detection
+
+On first run wi-mod reads the system locale to choose between English (`en`) and Spanish (`es`). You can override this at any time from **Settings → Language**. When the language is set to Spanish, wi-mod automatically translates mod summaries and category names that were originally fetched in English.
+
+## Quit behavior
+
+By default, clicking the window's close button sends wi-mod to the system tray rather than exiting the process. You can change this in **Settings → Quit behavior**. The setting is also exposed via `POST /api/quit-pref` so that the in-app close button can update it without opening Settings.
+
+## Settings API
+
+The local server exposes two endpoints for reading and writing settings:
+
+<CardGroup cols={2}>
+  <Card title="GET /api/settings" icon="arrow-down-to-line">
+    Returns the current public settings object. API key values are **masked** to a short hint (e.g. `ab12…ef34`) so that the raw key is never exposed over the local HTTP interface. The response also includes boolean flags (`hasKey`, `hasRawgKey`, `hasCurseforgeKey`, `hasSteamKey`) and the full `profile` object.
+  </Card>
+  <Card title="PATCH /api/settings" icon="pen-to-square">
+    Accepts a partial settings object. Only the fields present in the request body are updated. Each API key field is validated against its platform before being saved — if validation fails, the endpoint returns an error and the stored value is unchanged.
+  </Card>
+</CardGroup>
+
+### Example: reading settings
+
+```http
+GET /api/settings HTTP/1.1
+Host: 127.0.0.1:47621
+```
+
+```json
+{
+  "hasKey": true,
+  "hint": "ab12…ef34",
+  "hasRawgKey": false,
+  "rawgHint": "",
+  "hasCurseforgeKey": true,
+  "curseforgeHint": "cd56…gh78",
+  "hasSteamKey": false,
+  "steamHint": "",
+  "language": "en",
+  "theme": "nexus",
+  "profile": {
+    "name": "MyNexusUser",
+    "isPremium": false,
+    "hourlyRemaining": 98,
+    "hourlyLimit": 100,
+    "dailyRemaining": 995,
+    "dailyLimit": 1000
+  }
+}
+```
+
+### Example: updating a key
+
+```http
+PATCH /api/settings HTTP/1.1
+Host: 127.0.0.1:47621
+Content-Type: application/json
+
+{
+  "apiKey": "your-new-nexus-key"
+}
+```
+
+<Note>
+  Full API key values are never returned by `GET /api/settings` — only the masked hint is included in the response. To rotate a key, enter the new value directly in the Settings panel or send it via `PATCH /api/settings`. The server validates the new key against the platform API before saving it.
+</Note>

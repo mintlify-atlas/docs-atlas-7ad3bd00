@@ -1,0 +1,185 @@
+---
+title: "Supported Mod Platforms and Game Sources"
+sidebarTitle: "Platforms"
+description: "wi-mod integrates with Nexus Mods, Modrinth, CurseForge, Steam Workshop, and ModDB. Each platform requires specific API keys and supports different games."
+---
+
+wi-mod supports six mod platforms out of the box. Each game in your library is associated with one or more platforms based on where mods for that game are typically published. When you add a mod, wi-mod checks the URL or manual entry against the allowed platforms for that game and rejects mismatches — so you cannot accidentally add a CurseForge link to a Skyrim entry. The full platform-to-game mapping is sent with every `GET /api/library` response under the `sources` key.
+
+<CardGroup cols={2}>
+  <Card title="Nexus Mods" icon="n">
+    **API key required** (free tier available at nexusmods.com)
+
+    The default platform for most PC games. Supports metadata lookup, mod search via the Nexus GraphQL v2 API (`/v2/graphql`), and direct file downloads. Direct download via API requires a **Nexus Premium** account; free accounts can open the download page in a browser.
+
+    Covers: Skyrim SE, Skyrim VR, Enderal, Elden Ring, Dark Souls (all), Fallout 4, New Vegas, Witcher 3, Cyberpunk 2077, Baldur's Gate 3, Monster Hunter World, Hollow Knight, GTA San Andreas, GTA V, STALKER series, Stardew Valley, and more.
+  </Card>
+  <Card title="Modrinth" icon="box">
+    **No API key needed**
+
+    Minecraft-focused platform with a fully public REST API (`api.modrinth.com/v2`). Supports project search and full metadata fetch including version history. Download URLs are served directly from Modrinth's CDN (`cdn.modrinth.com`).
+
+    Supported loaders (for search facets): **Fabric**, **Forge**, **Quilt**, **NeoForge**.
+
+    Covers: `minecraft` and all Minecraft-variant domains.
+  </Card>
+  <Card title="CurseForge" icon="fire">
+    **API key required** (free at console.curseforge.com)
+
+    Supports Minecraft and World of Warcraft. Uses the CurseForge REST API (`api.curseforge.com/v1`) for project lookup, search, and direct file download URLs. The `wow` domain is aliased to `worldofwarcraft` internally.
+
+    Supported loaders (for search): **Forge** (1), **Fabric** (4), **Quilt** (5), **NeoForge** (6).
+
+    Covers: `minecraft`, `worldofwarcraft`, `worldofwarcraftclassic`.
+  </Card>
+  <Card title="Steam Workshop" icon="steam">
+    **Steam API key** for metadata enrichment (optional)
+
+    The Steam Web API key (`api.steampowered.com`) is used to validate credentials and enrich Workshop metadata. Mods from Steam Workshop are added by pasting the Workshop item URL; wi-mod stores the URL and marks the platform as `Steam Workshop`.
+
+    Key validation calls `ISteamWebAPIUtil/GetSupportedAPIList/v1`.
+  </Card>
+  <Card title="ModDB" icon="globe">
+    **No API key** — manual URL entry only
+
+    ModDB does not offer an official public API. Mods are added by pasting a ModDB page URL. wi-mod fetches the page title and meta description from the HTML to populate the mod name and summary fields automatically.
+
+    Covers: `fallout4`, `newvegas`, `stalkershadowofchernobyl`, and other games with a ModDB community.
+  </Card>
+  <Card title="Independiente" icon="link">
+    **No API key** — manual URL entry only
+
+    A catch-all platform for mods hosted on standalone pages (personal sites, GitHub releases, itch.io, etc.). wi-mod fetches the page `<title>` and `<meta name="description">` to pre-fill the mod form. All fields can be edited manually before saving.
+
+    Available for every game in the library as a fallback platform.
+  </Card>
+</CardGroup>
+
+## Game → platform mapping
+
+The following table lists the platform assignments defined in `wi_mod/sources.py`. Only the listed platforms are valid for each game; attempting to add a mod from a different platform raises a validation error.
+
+| Game domain | Allowed platforms |
+|---|---|
+| `minecraft` | Modrinth, CurseForge, Independiente |
+| `skyrimspecialedition` | Nexus, Independiente |
+| `skyrim` | Nexus, Independiente |
+| `skyrimvr` | Nexus, Independiente |
+| `enderal` | Nexus, Independiente |
+| `eldenring` | Nexus, Independiente |
+| `darksoulsremastered` | Nexus, Independiente |
+| `darksouls3` | Nexus, Independiente |
+| `darksouls2` | Nexus, Independiente |
+| `darksouls` | Nexus, Independiente |
+| `fallout4` | Nexus, ModDB, Independiente |
+| `newvegas` | Nexus, ModDB, Independiente |
+| `stalkershadowofchernobyl` | Nexus, ModDB, Independiente |
+| `stalkerclearsky` | Nexus, Independiente |
+| `stalkercallofpripyat` | Nexus, Independiente |
+| `stalker2` | Nexus, Independiente |
+| `witcher3` | Nexus, Independiente |
+| `cyberpunk2077` | Nexus, Independiente |
+| `baldursgate3` | Nexus, Independiente |
+| `monsterhunterworld` | Nexus, Independiente |
+| `hollowknight` | Nexus, Independiente |
+| `gtasa` | Nexus, Independiente |
+| `gta5` | Nexus, Independiente |
+| `stardewvalley` | Nexus, Independiente |
+| `worldofwarcraft` | CurseForge, Independiente |
+| `worldofwarcraftclassic` | CurseForge, Independiente |
+| *(any other game)* | Nexus, Independiente *(default fallback)* |
+
+<Note>
+  Any domain beginning with `minecraft` (e.g. `minecraft-1-21`) is automatically mapped to the Minecraft platform set (Modrinth, CurseForge, Independiente). Similarly, domains beginning with `worldofwarcraft` fall back to CurseForge + Independiente.
+</Note>
+
+## Per-platform search endpoints
+
+wi-mod exposes search endpoints for each platform that supports it. Results include a `savedId` field indicating whether you already have that mod in your library.
+
+<Tabs>
+  <Tab title="Nexus Mods">
+    ```http
+    GET /api/nexus/search?q=<query>&game=<gameDomain>
+    ```
+
+    Uses the Nexus GraphQL v2 API. Requires a valid Nexus API key in Settings. Results are sorted by download count. Returns up to 8 hits; each hit includes `modId`, `name`, `summary`, `author`, `version`, `downloads`, `endorsements`, `pictureUrl`, `url`, and `savedId`.
+
+    ```json
+    {
+      "results": [
+        {
+          "modId": 1885,
+          "name": "SkyUI",
+          "gameDomain": "skyrimspecialedition",
+          "downloads": 9500000,
+          "url": "https://www.nexusmods.com/skyrimspecialedition/mods/1885",
+          "savedId": ""
+        }
+      ],
+      "supported": true,
+      "platform": "Nexus"
+    }
+    ```
+  </Tab>
+  <Tab title="Modrinth">
+    ```http
+    GET /api/modrinth/search?q=<query>&mc=<mcVersion>&loader=<loader>
+    ```
+
+    Uses the public Modrinth REST search API. No API key required. Optionally filter by Minecraft version (`mc`) and mod loader (`loader`: `fabric`, `forge`, `quilt`, `neoforge`).
+
+    ```json
+    {
+      "results": [
+        {
+          "platform": "Modrinth",
+          "name": "Sodium",
+          "author": "jellysquid3",
+          "summary": "A modern rendering engine for Minecraft",
+          "downloads": 18000000,
+          "url": "https://modrinth.com/mod/sodium",
+          "savedId": ""
+        }
+      ],
+      "supported": true,
+      "platform": "Modrinth"
+    }
+    ```
+  </Tab>
+  <Tab title="CurseForge">
+    ```http
+    GET /api/curseforge/search?q=<query>&game=<gameDomain>&mc=<mcVersion>&loader=<loader>
+    ```
+
+    Uses the CurseForge REST API. Requires a CurseForge API key in Settings. Optionally filter by Minecraft version (`mc`) and loader (`loader`: `forge`, `fabric`, `quilt`, `neoforge`).
+
+    ```json
+    {
+      "results": [
+        {
+          "platform": "CurseForge",
+          "name": "Just Enough Items",
+          "author": "mezz",
+          "summary": "JEI is an item and recipe viewing mod",
+          "downloads": 220000000,
+          "url": "https://www.curseforge.com/minecraft/mc-mods/jei",
+          "savedId": ""
+        }
+      ],
+      "supported": true,
+      "platform": "CurseForge"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Adding custom games
+
+wi-mod ships with a small set of default games (Stardew Valley, Minecraft, GTA San Andreas, Skyrim SE, WoW Classic). You can expand your library with any game from the RAWG database.
+
+<Note>
+  A free RAWG API key unlocks the game search (`GET /api/rawg/search?q=`) and lets wi-mod automatically populate cover art, descriptions, ratings, and platform metadata for any game in the RAWG catalogue. Add your RAWG key under **Settings → RAWG API Key**.
+</Note>
+
+To add a game manually without RAWG, use `POST /api/catalog` with `kind: "game"` and provide at least a `gameDomain` and `gameName`. The new game will appear in the game selector immediately.

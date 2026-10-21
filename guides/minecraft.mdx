@@ -1,0 +1,166 @@
+---
+title: "Manage Minecraft Mods and Profiles with wi-mod"
+sidebarTitle: "Minecraft"
+description: "Create isolated Minecraft profiles, install mods from Modrinth or CurseForge, resolve dependencies automatically, and launch the game directly from wi-mod."
+---
+
+wi-mod manages Minecraft through isolated instances — self-contained profile folders, each with their own `.minecraft/` directory, mod list, and loader installation. The model is similar to the CurseForge or Modrinth app: each profile is independent, so swapping between a Fabric 1.21 setup and a Forge 1.20.1 setup is as simple as picking a different profile when you launch.
+
+## Supported Loaders
+
+wi-mod can create profiles for the following mod loaders:
+
+<CardGroup cols={3}>
+  <Card title="Fabric" icon="layer-group">
+    Lightweight, fast-updating loader. Fetched from `meta.fabricmc.net`.
+  </Card>
+  <Card title="Forge" icon="hammer">
+    Long-established loader. Fetched from the Forge Maven repository. Requires Java.
+  </Card>
+  <Card title="NeoForge" icon="fire">
+    Forge fork maintained by the community. Fetched from the NeoForge Maven. Requires Java.
+  </Card>
+  <Card title="Quilt" icon="puzzle-piece">
+    Fabric-compatible alternative loader. Fetched from `meta.quiltmc.org`.
+  </Card>
+  <Card title="Vanilla" icon="cube">
+    No mod loader — plain Minecraft. Useful for testing or snapshot versions.
+  </Card>
+</CardGroup>
+
+## Creating a Profile
+
+<Steps>
+  <Step title="Open the Minecraft tab">
+    Click the **Minecraft** section in the wi-mod sidebar to open the profile manager.
+  </Step>
+  <Step title="Select a Minecraft version">
+    wi-mod fetches the full release list from Mojang's version manifest:
+
+    ```
+    GET /api/minecraft/versions
+    ```
+
+    The response contains a `versions` array of release strings (`"1.21.4"`, `"1.20.1"`, etc.), sorted newest-first. Snapshots and pre-releases are excluded — only `"release"` type entries are shown.
+  </Step>
+  <Step title="Choose a loader and loader version">
+    Once you've selected a Minecraft version, wi-mod queries the available loader builds for it:
+
+    ```
+    GET /api/minecraft/loaders?version={mcVersion}
+    ```
+
+    The response is a `loaders` object with keys `forge`, `fabric`, `neoforge`, and `quilt`, each containing an array of compatible version strings for that Minecraft release. Use this to pick the loader version before creating the profile.
+  </Step>
+  <Step title="Name your profile">
+    Enter a unique name for the profile. Names must not contain path separators (`/`, `\`) or control characters.
+  </Step>
+  <Step title="wi-mod creates the isolated instance">
+    wi-mod calls:
+
+    ```
+    POST /api/minecraft/profiles
+    ```
+
+    Request body:
+
+    ```json
+    {
+      "name": "My Fabric 1.21",
+      "mc_version": "1.21.4",
+      "loader_type": "fabric",
+      "loader_version": "0.16.9"
+    }
+    ```
+
+    Supported `loader_type` values: `fabric`, `forge`, `neoforge`, `quilt`, `vanilla`.
+
+    wi-mod creates an instance folder under `instances/{name}/` containing a `.minecraft/` directory with `mods/`, `config/`, `resourcepacks/`, and `saves/` subdirectories, and a `profile.json` file recording the Minecraft version, loader type, and loader version.
+  </Step>
+  <Step title="Install the loader (Fabric, Forge, NeoForge, Quilt)">
+    For non-vanilla profiles, the loader libraries must be downloaded before the game can launch. wi-mod does this in a separate step so it can report progress:
+
+    ```
+    POST /api/minecraft/profiles/install
+    ```
+
+    Request body:
+
+    ```json
+    {
+      "name": "My Fabric 1.21"
+    }
+    ```
+
+    wi-mod reads the `profile.json`, downloads the loader JSON and all required libraries from the appropriate Maven or metadata endpoint, and writes them into the instance's `.minecraft/versions/` and `.minecraft/libraries/` folders.
+
+    For `vanilla` profiles this step is a no-op and returns immediately.
+  </Step>
+</Steps>
+
+<Note>
+  Forge and NeoForge require Java to be installed on your machine. wi-mod checks for a valid `javaw` (or `java`) binary before creating the profile. If Java is not found, you can install it automatically:
+
+  ```
+  POST /api/java/install
+  ```
+
+  Send `{ "mc_version": "1.20.1" }` and wi-mod will download and install the correct JDK (Java 17 for 1.18+, Java 21 for 1.21+) into the wi-mod `java/` directory.
+</Note>
+
+## Installing Mods into a Profile
+
+With a profile created and its loader installed, you can add mods from Modrinth directly into the profile's `.minecraft/mods/` folder:
+
+```
+POST /api/minecraft/profiles/install
+```
+
+For mods (as opposed to the loader itself), wi-mod uses the `ModManager` class to search Modrinth by project ID, Minecraft version, and loader. The install flow:
+
+1. Finds the latest version of the project that matches the requested Minecraft version and loader.
+2. Downloads the primary `.jar` file to `.minecraft/mods/{filename}.jar`.
+3. Iterates over the version's `dependencies` array. For every dependency with `dependency_type == "required"`, it recursively installs that project too.
+
+Dependency resolution is automatic — you only need to specify the top-level mod's project ID.
+
+<Tip>
+  Before installing a mod, use `GET /api/modrinth/search?q=&mc={version}&loader={loader}` to find its Modrinth project ID and confirm it is available for your target Minecraft version and loader combination.
+</Tip>
+
+## Launching Minecraft
+
+Once your profile is ready and mods are staged, launch the game:
+
+```
+POST /api/minecraft/launch
+```
+
+Request body:
+
+```json
+{
+  "name": "My Fabric 1.21",
+  "username": "Steve",
+  "uuid": "",
+  "accessToken": ""
+}
+```
+
+| Field | Description |
+|---|---|
+| `name` | Profile name (must match an existing instance folder) |
+| `username` | In-game display name |
+| `uuid` | Player UUID. Leave empty to use offline mode — wi-mod derives a UUID from the username using the standard `OfflinePlayer:{name}` MD5 hash. |
+| `accessToken` | Microsoft auth token. Leave empty for offline mode. |
+
+wi-mod then:
+
+1. Calls `stage_mods()` to copy the active `.jar` files from your library into `.minecraft/mods/`, removing any jars placed by a previous launch session.
+2. Reads the version JSON from `.minecraft/versions/` and resolves the full Java classpath from the `libraries` section (including OS-specific native libraries).
+3. Merges the loader's `arguments.jvm` and `arguments.game` arrays, substituting all `${variable}` placeholders.
+4. Spawns `javaw` (or `java`) as a detached subprocess and returns the process PID.
+
+The launcher writes its output to `.minecraft/logs/launcher.log`.
+
+You can also trigger a Minecraft launch from the general game launch endpoint. If the selected game domain starts with `minecraft` or the stored `launchPath` points to the Minecraft Launcher, `POST /api/game/launch` will route through the same Minecraft launch path — requiring you to pass an `instance` name in the request body.

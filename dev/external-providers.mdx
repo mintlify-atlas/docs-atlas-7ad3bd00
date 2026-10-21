@@ -1,0 +1,286 @@
+---
+title: "External API Providers: Nexus, Modrinth, CurseForge, Steam, RAWG"
+sidebarTitle: "External Providers"
+description: "wi-mod proxies requests to five external mod APIs. In the Python runtime, requests go through wi_mod/ modules. In Tauri, through the fetch_external_api Rust command."
+---
+
+wi-mod communicates with five external API providers to fetch mod metadata, search results, download links, and game cover art. The call path differs depending on which runtime is active. In the Python HTTP server, each provider has a dedicated module (`wi_mod/nexus.py`, `wi_mod/modrinth.py`, etc.) that makes direct `urllib.request` calls with the appropriate API key injected. In the Tauri desktop app, the TypeScript frontend routes every external request through a single Rust command (`fetch_external_api`) that acts as an authenticated proxy, keeping API keys out of the WebView's JavaScript context and bypassing browser CORS restrictions entirely.
+
+---
+
+## Provider Overview
+
+| Provider | Base URL | API Key Required | Used for |
+|---|---|---|---|
+| Nexus Mods | `https://api.nexusmods.com` | Yes — `apikey` header | Mod metadata, search, download links |
+| Modrinth | `https://api.modrinth.com` | No | Mod metadata, search, versions |
+| CurseForge | `https://api.curseforge.com` | Yes — `x-api-key` header | Mod metadata, search, download |
+| Steam | `https://api.steampowered.com` | Yes — `key` query param | Workshop metadata |
+| RAWG | `https://api.rawg.io` | Yes — `key` query param | Game metadata, cover art |
+
+Keys are stored in wi-mod settings (`apiKey`, `curseforgeApiKey`, `steamApiKey`, `rawgApiKey`). The server validates each key against the provider's own validation endpoint when the key is first saved via `PATCH /api/settings`.
+
+---
+
+## Python Path
+
+In the Python runtime each provider module wraps `urllib.request` directly. API keys are read from the `Library.settings()` dict and injected as request headers (or query parameters) per provider's requirements. There is no shared HTTP client — each module builds and sends its own `urllib.request.Request` objects with a `User-Agent: wi-mod/<version>` header.
+
+The server endpoints that call these modules are:
+
+- `GET /api/nexus/search` → `wi_mod/nexus.search_mods()`
+- `GET /api/modrinth/search` → `wi_mod/modrinth.search_projects()`
+- `GET /api/curseforge/search` → `wi_mod/curseforge.search_mods()`
+- `GET /api/rawg/search` → `wi_mod/rawg.search_games()`
+- `GET /api/rawg/resolve` → `wi_mod/rawg.resolve_game()`
+- `POST /api/preview` → dispatches to the appropriate module based on URL pattern
+
+Error types (`NexusError`, `ModrinthError`, `CurseForgeError`, `RawgError`, `SteamError`) carry an HTTP status code so the server handler can forward the correct status to the frontend.
+
+---
+
+## TypeScript Clients
+
+`src/services/api/clients.ts` exports typed wrapper functions over the shared `fetchExternalApi` function. Each wrapper hard-codes the `provider` string and the HTTP method, exposing only the path, API key, and optional query parameters to call sites.
+
+```typescript
+// Typed wrappers around fetchExternalApi — from src/services/api/clients.ts
+
+export function nexusGet(
+  path: string,
+  apiKey: string,
+  query?: Record<string, string>,
+): Promise<FetchExternalResponse> {
+  return fetchExternalApi({ provider: "nexus", method: "GET", path, apiKey, query });
+}
+
+export function nexusPost(
+  path: string,
+  apiKey: string,
+  body?: unknown,
+): Promise<FetchExternalResponse> {
+  return fetchExternalApi({ provider: "nexus", method: "POST", path, apiKey, body });
+}
+
+export function curseforgeGet(
+  path: string,
+  apiKey: string,
+  query?: Record<string, string>,
+): Promise<FetchExternalResponse> {
+  return fetchExternalApi({ provider: "curseforge", method: "GET", path, apiKey, query });
+}
+
+export function steamGet(
+  path: string,
+  apiKey: string,
+  query?: Record<string, string>,
+): Promise<FetchExternalResponse> {
+  return fetchExternalApi({ provider: "steam", method: "GET", path, apiKey, query });
+}
+
+export function rawgGet(
+  path: string,
+  apiKey: string,
+  query?: Record<string, string>,
+): Promise<FetchExternalResponse> {
+  return fetchExternalApi({ provider: "rawg", method: "GET", path, apiKey, query });
+}
+
+/** Modrinth is public — no apiKey needed */
+export function modrinthGet(
+  path: string,
+  query?: Record<string, string>,
+): Promise<FetchExternalResponse> {
+  return fetchExternalApi({ provider: "modrinth", method: "GET", path, query });
+}
+```
+
+The `FetchExternalRequest` and `FetchExternalResponse` types are defined in `src/services/api/types.ts`:
+
+```typescript
+export type ExternalProvider = "nexus" | "curseforge" | "steam" | "rawg" | "modrinth";
+export type HttpMethod = "GET" | "POST";
+
+export interface FetchExternalRequest {
+  provider: ExternalProvider;
+  method?: HttpMethod;
+  /** Relative path, e.g. `/v1/games/skyrim/mods/1.json` */
+  path: string;
+  query?: Record<string, string>;
+  body?: unknown;
+  /** Provider key from Settings. Required on Desktop except for Modrinth. */
+  apiKey?: string;
+  headers?: Record<string, string>;
+}
+
+export interface FetchExternalResponse {
+  status: number;
+  ok: boolean;
+  headers: Record<string, string>;
+  body: unknown;
+}
+
+export const PROVIDER_BASE: Record<ExternalProvider, string> = {
+  nexus:       "https://api.nexusmods.com",
+  curseforge:  "https://api.curseforge.com",
+  steam:       "https://api.steampowered.com",
+  rawg:        "https://api.rawg.io",
+  modrinth:    "https://api.modrinth.com",
+};
+```
+
+---
+
+## `fetchExternalApi` — Unified Dispatch
+
+`src/services/api/fetchExternal.ts` is the single entry point used by all TypeScript call sites. It checks `isTauriRuntime()` (which tests for `window.__TAURI_INTERNALS__`) and routes accordingly:
+
+```typescript
+export async function fetchExternalApi(
+  request: FetchExternalRequest,
+): Promise<FetchExternalResponse> {
+  if (isTauriRuntime()) {
+    // Desktop: invoke Rust command — no CORS, API key never exposed to WebView JS
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke<FetchExternalResponse>("fetch_external_api", { request });
+  }
+  // Web: direct fetch with CORS headers (only works for providers that allow CORS)
+  return webFetchExternal(request);
+}
+```
+
+<Note>
+  The Rust proxy exists specifically to bypass browser CORS restrictions when
+  running inside the Tauri WebView. Native API providers like Nexus Mods do not
+  emit `Access-Control-Allow-Origin` headers, so direct `fetch()` calls from a
+  WebView would be blocked. Routing through `reqwest` in the Rust process avoids
+  this entirely.
+</Note>
+
+---
+
+## Rust `fetch_external_api` Command
+
+The Tauri command lives in `src-tauri/src/http_proxy.rs`. Here is the complete flow:
+
+<Steps>
+  <Step title="Parse provider">
+    The `provider` string from the request is parsed into an internal `Provider` enum. Accepted values:
+
+    ```rust
+    "nexus" | "nexusmods"  → Provider::Nexus
+    "curseforge" | "cf"    → Provider::CurseForge
+    "steam"                → Provider::Steam
+    "rawg"                 → Provider::Rawg
+    "modrinth"             → Provider::Modrinth
+    ```
+
+    Any other value returns an error immediately.
+  </Step>
+
+  <Step title="Build URL">
+    The full URL is assembled from the provider's base URL, the relative `path`, and any `query` parameters. Steam and RAWG additionally receive the API key as a `key` query parameter:
+
+    ```rust
+    // Steam and RAWG: key goes in query string
+    Provider::Rawg | Provider::Steam => {
+        params.entry("key".into()).or_insert_with(|| key.to_string());
+    }
+    // Other providers: key goes in a request header (see next step)
+    ```
+
+    The `path` must start with `/` and must not contain `://` or `..`.
+  </Step>
+
+  <Step title="Inject auth headers">
+    After building the URL, auth headers are applied per provider:
+
+    ```rust
+    Provider::Nexus     → header("apikey", key)
+                           + header("Application-Name", "wi-mod")
+                           + header("Application-Version", env!("CARGO_PKG_VERSION"))
+    Provider::CurseForge → header("x-api-key", key)
+    Provider::Steam     → key already in query string (no header)
+    Provider::Rawg      → key already in query string (no header)
+    Provider::Modrinth  → no auth required
+    ```
+
+    Every request also receives:
+
+    ```
+    User-Agent: wi-mod/<version> (local library)
+    Accept: application/json
+    ```
+
+    Providers that require a key (`Nexus`, `CurseForge`, `Steam`, `RAWG`) return an error immediately if `api_key` is empty or missing.
+  </Step>
+
+  <Step title="Forward extra headers">
+    Any caller-supplied `headers` are forwarded to `reqwest`, except that the following header names are silently dropped to prevent key leakage or request forgery: `apikey`, `x-api-key`, `authorization`, `host`.
+  </Step>
+
+  <Step title="Send and return">
+    The request is sent with a 40-second timeout using `reqwest`. The response is deserialized into:
+
+    ```rust
+    pub struct FetchExternalResponse {
+        pub status:  u16,
+        pub ok:      bool,
+        pub headers: HashMap<String, String>,  // all keys lowercased
+        pub body:    Value,                    // parsed JSON, or raw string if not JSON
+    }
+    ```
+
+    Non-2xx responses are turned into a Rust `Err` carrying `"HTTP <status>: <message>"` (extracted from `body.message` or `body.error` if present).
+  </Step>
+</Steps>
+
+### Complete request/response type signatures
+
+```rust
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchExternalRequest {
+    pub provider: String,
+    #[serde(default = "default_method")]  // "GET"
+    pub method:   String,
+    pub path:     String,
+    #[serde(default)]
+    pub query:    HashMap<String, String>,
+    #[serde(default)]
+    pub body:     Option<Value>,
+    #[serde(default)]
+    pub api_key:  Option<String>,
+    #[serde(default)]
+    pub headers:  HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FetchExternalResponse {
+    pub status:  u16,
+    pub ok:      bool,
+    pub headers: HashMap<String, String>,
+    pub body:    Value,
+}
+```
+
+---
+
+## Provider-Specific Notes
+
+<Tip>
+  **Modrinth is the only provider that works without any API key**, in both
+  Desktop and Web demo modes. In the Web demo, `fetchExternalApi` falls through
+  to a regular `fetch()` call because Modrinth's API supports CORS. This makes
+  Modrinth the only provider whose search and metadata endpoints work fully in
+  the browser without requiring the Tauri wrapper.
+</Tip>
+
+**Nexus Mods** — The server tracks the rate-limit response headers (`X-RL-Hourly-Remaining`, `X-RL-Daily-Remaining`, etc.) via the `last_limits()` function in `wi_mod/nexus.py` and exposes them in the `profile` field of `GET /api/settings`. Batch refresh (`POST /api/refresh`) stops early on `429 Too Many Requests` to avoid exhausting the daily quota.
+
+**CurseForge** — CurseForge file download URLs require a second API call (`/v1/mods/{modId}/files/{fileId}/download-url`) because the file list endpoint returns metadata only. This second call is made by `wi_mod/curseforge.download_file_url()` and is also subject to the API key requirement.
+
+**Steam** — Currently used for Steam Workshop metadata only. The Steam Web API key is validated by `wi_mod/steam.validate_key()` when saved.
+
+**RAWG** — Used exclusively for game catalog enrichment (cover art, description, rating, genres). RAWG results are cached in `data/cache/` to reduce API calls when the same game appears in multiple workflows.

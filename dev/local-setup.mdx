@@ -1,0 +1,154 @@
+---
+title: "Set Up wi-mod for Local Development"
+sidebarTitle: "Local Setup"
+description: "Clone wi-mod, install dependencies for Python and Node, and run the dev server. Covers both the Tauri v2 path and the legacy Python/pywebview path."
+---
+
+wi-mod supports two development paths that share the same `web/` UI layer. The **Tauri v2 path** is the recommended approach — it compiles a Rust backend and serves the Vite frontend through a native window. The **legacy Python path** uses `app.py` with pywebview and remains fully functional while the Tauri migration is in progress. Choose the path that matches your contribution area; you can keep both running side by side in the same clone.
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Tauri path (recommended)" icon="rust">
+    - **Node.js 18+** (Node 20 is used in CI)
+    - **Rust** via [rustup](https://rustup.rs/) — stable toolchain
+    - **Platform WebView runtime**:
+      - Windows: WebView2 (ships with Windows 10/11; install via [Evergreen bootstrapper](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) if missing)
+      - Linux: `libwebkit2gtk-4.1-dev` + `libgtk-3-dev` (see full list below)
+    - Full prerequisites guide: [v2.tauri.app/start/prerequisites](https://v2.tauri.app/start/prerequisites/)
+  </Card>
+  <Card title="Python path (legacy)" icon="python">
+    - **Python 3.10+**
+    - **pip** (bundled with Python)
+    - Dependencies declared in `requirements.txt`:
+      ```text
+      pywebview>=5.0
+      pyinstaller>=6.0
+      ```
+  </Card>
+</CardGroup>
+
+---
+
+## Tauri development
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/wiarch/wi-mod.git
+    cd wi-mod
+    ```
+  </Step>
+
+  <Step title="Install Tauri prerequisites">
+    Follow the official Tauri v2 guide for your operating system:
+    [https://v2.tauri.app/start/prerequisites/](https://v2.tauri.app/start/prerequisites/)
+
+    On Ubuntu/Debian, the required system packages are:
+
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y \
+      build-essential curl wget file \
+      libxdo-dev libssl-dev \
+      libwebkit2gtk-4.1-dev libgtk-3-dev \
+      libayatana-appindicator3-dev librsvg2-dev patchelf
+    ```
+
+    On Windows, install Rust via rustup and ensure WebView2 is present. No extra packages are needed.
+  </Step>
+
+  <Step title="Install Node dependencies">
+    ```bash
+    npm install
+    ```
+
+    This installs `@tauri-apps/api`, `@tauri-apps/cli`, `@tauri-apps/plugin-sql`, and Vite from `package.json`.
+  </Step>
+
+  <Step title="Start the dev server">
+    ```bash
+    npm run tauri:dev
+    ```
+
+    This command runs `tauri dev`, which internally calls `npm run dev` (Vite dev server on `http://localhost:1420`) and opens a native Tauri window pointed at that URL. Hot-reloading is active for the Vite frontend; Rust code requires a full rebuild on change.
+  </Step>
+</Steps>
+
+---
+
+## Legacy Python development
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/wiarch/wi-mod.git
+    cd wi-mod
+    ```
+
+    Skip this step if you already cloned for the Tauri path — the clone is identical.
+  </Step>
+
+  <Step title="Install Python dependencies">
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    This installs `pywebview>=5.0` and `pyinstaller>=6.0`.
+  </Step>
+
+  <Step title="Run the application">
+    On any platform:
+
+    ```bash
+    python app.py
+    ```
+
+    On Windows you can also use the launcher script, which will prefer a pre-built executable in `dist/` and fall back to `python app.py` automatically:
+
+    ```bash
+    scripts\wi-mod.bat
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Data directory
+
+The `data/` folder is created next to the project root on first run. It is not tracked by Git and holds your local database and API key configuration. The most important file inside it is `data/keys.json`, which lets you supply API keys for Nexus Mods, CurseForge, RAWG, and other integrations without going through the in-app settings UI.
+
+<Tip>
+  A ready-to-use template is included at `data/keys.example.json`. Copy it to `data/keys.json` and fill in your API keys to configure all integrations in one step before launching the app for the first time.
+</Tip>
+
+---
+
+## Web demo (no install required)
+
+<Note>
+  If you only need to explore the UI or test frontend-only changes, there is nothing to install. Open [https://wiarch.github.io/wi-mod/](https://wiarch.github.io/wi-mod/) in any modern browser. Data is stored locally in your browser via IndexedDB; no account or server is needed.
+</Note>
+
+---
+
+## Commit convention
+
+All commits to wi-mod must follow [Conventional Commits](https://www.conventionalcommits.org/). This is enforced by project rules and is required for automated changelog generation.
+
+```
+<type>(<optional scope>): <short imperative description>
+```
+
+| Type | When to use |
+|------|-------------|
+| `feat` | New user-visible feature |
+| `fix` | Bug or regression fix |
+| `chore` | Tooling, scripts, repo maintenance |
+| `docs` | Documentation only |
+| `refactor` | Code restructure with no behaviour change |
+| `perf` | Performance improvement |
+| `test` | Tests only |
+| `ci` | GitHub Actions changes |
+
+Good examples: `feat(ui): add sidebar mod list under filters`, `fix(demo): use relative assets on GitHub Pages`, `chore(repo): move launcher scripts into scripts/`.

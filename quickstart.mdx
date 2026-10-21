@@ -1,47 +1,81 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with wi-mod in 5 Minutes"
+sidebarTitle: "Quickstart"
+description: "Add your first mod to wi-mod, configure your Nexus Mods API key, and explore the library interface — all in under five minutes."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+This guide walks you through the first time you open wi-mod: configuring an API key, saving your first mod, and getting comfortable with the library interface. By the end you will have a working local library with at least one mod card saved and a clear picture of where to go next.
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+## First-Time Setup
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Launch wi-mod">
+    Download and run the portable executable for your platform. If you have not done that yet, see the [Installation](/installation) page for the download link and platform-specific notes.
 
-    ```bash
-    npm install your-package
-    ```
+    wi-mod opens directly to the library view. On the very first launch the library will be empty — that is expected.
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+  <Step title="Add your Nexus Mods API key">
+    Open **Settings** (the gear icon in the sidebar) and navigate to the **API Keys** section. Paste your Nexus Mods personal API key into the Nexus field, then save.
 
-    ```bash
-    your-cli init
-    ```
+    To get a free key:
+    1. Log in at [nexusmods.com](https://www.nexusmods.com/users/myaccount?tab=api).
+    2. Scroll to **API Keys** and click **Generate a new API key**.
+    3. Copy the key and paste it into wi-mod's Settings.
+
+    <Note>
+      A free Nexus Mods key is sufficient for browsing mod metadata and descriptions. A **Premium** key is required to fetch direct download links. CurseForge also requires its own free API key, which you can add in the same Settings panel. Modrinth does not require a key for read access.
+    </Note>
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+  <Step title="Add a mod by URL">
+    In the main toolbar, click **Add Mod** (or the `+` button) and paste a mod URL into the input field. For example:
 
-    ```bash
-    your-cli start
     ```
+    https://www.nexusmods.com/skyrimspecialedition/mods/1
+    ```
+
+    wi-mod automatically detects the platform from the URL, calls the appropriate API, and fetches the mod's title, description, category, version, and thumbnail. The mod card is then saved to your local library — no manual data entry required.
+
+    You can add mods from any supported platform using the same flow: paste a Nexus Mods, Modrinth, CurseForge, or ModDB URL and wi-mod handles the rest.
+  </Step>
+  <Step title="Browse your library">
+    Return to the main **Library** view. You can filter and sort your saved mods using the controls at the top of the list:
+
+    - **Game** — narrow the view to a single game (e.g. Skyrim Special Edition, Minecraft, Elden Ring).
+    - **Platform** — show only mods from a specific source such as Nexus Mods or Modrinth.
+    - **Category** — filter by mod type (gameplay, visuals, utilities, and so on).
+
+    Click any mod card to open its detail view, which shows the full description, the source URL, and any notes you have added.
+
+    <Tip>
+      Use the **search bar** at the top of the library to find mods on Nexus Mods, Modrinth, or CurseForge directly from within wi-mod — without opening a browser. Results appear inline and any entry can be saved to your library in one click.
+    </Tip>
+  </Step>
+  <Step title="Create a modpack (optional)">
+    Once you have saved several related mods, use **Modpacks** to group them together. A modpack is a named collection — for example, "SSE Overhaul 2025" or "Minecraft Performance Pack" — that makes it easy to see which mods belong to a particular setup at a glance.
+
+    Open the **Modpacks** section from the sidebar, click **New Modpack**, give it a name, and then add mods to it from your library.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Offline Usage
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+<Note>
+  Once mods are saved to your library, wi-mod works entirely without an internet connection. All metadata is stored locally in SQLite (desktop) or IndexedDB (web demo). An internet connection is only needed when fetching new mod metadata or checking for updates on a source platform.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Keys" icon="key" href="/configuration/api-keys">
+    Configure keys for Nexus Mods, CurseForge, RAWG, and Steam to unlock full metadata fetching across all supported platforms.
+  </Card>
+  <Card title="Adding Mods Guide" icon="circle-plus" href="/guides/adding-mods">
+    Learn the different ways to add mods — by URL, by search, and by bulk import — and how wi-mod resolves metadata for each platform.
+  </Card>
+  <Card title="Modpacks" icon="layer-group" href="/features/modpacks">
+    Group related mods into named collections and keep your setups for different games or playthroughs organised and easy to share.
+  </Card>
+  <Card title="Platform Integrations" icon="plug" href="/features/platforms">
+    Explore the per-platform features: Nexus Mods download links, Modrinth version tracking, CurseForge project pages, and more.
+  </Card>
+</CardGroup>

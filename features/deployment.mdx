@@ -1,0 +1,155 @@
+---
+title: "Deploy Mods to Your Game's Data Folder"
+sidebarTitle: "Deployment"
+description: "wi-mod deploys active mods into a game's Data directory using hardlinks or symlinks, avoiding file duplication and enabling instant enable/disable without copying."
+---
+
+Deployment is how wi-mod moves mod files from its own storage into the location the game reads at launch. Rather than copying files — which wastes disk space and makes updates slow — wi-mod creates **hardlinks** when the mod storage and the game directory are on the same physical disk, or **symlinks** when they are on different disks. Either way the game sees the files exactly where it expects them, and wi-mod retains full control: it can update, swap, or remove links instantly without touching any file the game or another tool created.
+
+## How deployment works
+
+<Steps>
+  <Step title="Locate the game's Data folder">
+    wi-mod inspects the launch path you configure for the game. If the path points to an executable (e.g. `SkyrimSE.exe`), it looks for a `Data` subdirectory next to it. If the path itself is already named `Data`, it is used directly. If neither condition is met, deployment raises an error asking you to set a valid launch path.
+  </Step>
+  <Step title="Extract and stage mod files">
+    For each active mod being deployed, wi-mod reads the mod's zip archive and extracts the relevant files to a temporary staging directory (`library-root/staged/<mod-id>/`). STANDARD packages extract directly from their root or detected top-level folder. FOMOD packages (see below) extract only the files matching the user's option selections.
+  </Step>
+  <Step title="Create hardlinks or symlinks">
+    For each staged file, wi-mod creates a link in the game's `Data` folder at the correct relative path. It tries `os.link` first (hardlink — zero extra disk usage); if that fails — typically because source and destination are on different filesystems — it falls back to `os.symlink`.
+  </Step>
+  <Step title="Record every link in the manifest">
+    Every link wi-mod creates is recorded in `deploy-links.json` at the library root. The manifest stores the source mod ID, its priority, the relative path inside `Data`, and the absolute `Data` directory path. On re-deployment the manifest is consulted before creating new links, ensuring wi-mod never overwrites files it did not create.
+  </Step>
+  <Step title="Priority wins file conflicts">
+    If two active mods provide the same relative path inside `Data`, the mod with the **higher priority number** wins: its file is linked last and therefore reflects in the game. Lower-priority mods that share that path are recorded as `skipped` in the deployment response. This matches the conflict analysis shown in the library view.
+  </Step>
+</Steps>
+
+## The deploy-links manifest
+
+The `deploy-links.json` file is the authoritative record of everything wi-mod has placed in the game's `Data` folder. Its structure is:
+
+```json
+{
+  "dataDir": "/path/to/SkyrimSE/Data",
+  "links": {
+    "meshes/architecture/farm_house.nif": {
+      "modId": "a3f2c1d8e9b04f5a8c7d6e5f4b3a2c1d",
+      "priority": 15,
+      "relative": "meshes/architecture/farm_house.nif",
+      "dataDir": "/path/to/SkyrimSE/Data"
+    }
+  }
+}
+```
+
+- **Keys** are lowercase relative paths within `Data`.
+- Wi-mod only overwrites an existing manifest entry if the new mod has a **higher or equal priority** than the mod that originally created the link.
+- Files present in `Data` but **absent from the manifest** are never touched. Pre-existing game files and files placed by other tools are completely safe.
+
+## FOMOD installer support
+
+Mods that contain a `ModuleConfig.xml` at their FOMOD path are detected as FOMOD packages. When you trigger deployment on a FOMOD mod without having selected options yet, wi-mod returns the installer plan and waits:
+
+```json
+{
+  "kind": "FOMOD",
+  "deployed": false,
+  "plan": {
+    "moduleName": "Alternate Start - Live Another Life",
+    "installSteps": [
+      {
+        "name": "Choose variant",
+        "groups": [
+          {
+            "name": "Start location",
+            "type": "SelectExactlyOne",
+            "plugins": [
+              { "name": "Alternate Perspective", "type": "Optional", "files": [...] },
+              { "name": "Vanilla Start", "type": "Optional", "files": [...] }
+            ]
+          }
+        ]
+      }
+    ],
+    "requiredFiles": [...]
+  }
+}
+```
+
+The frontend renders the step-by-step installer dialog. Once the user confirms their selections, it re-sends the deployment request with a `plugins` array of selected option names. wi-mod then extracts only the files belonging to those selections (plus any `requiredFiles`) and links them into `Data`.
+
+To inspect a mod's FOMOD plan without deploying, send `POST /api/mods/:id/install` with `{ "inspect": true }`.
+
+## Disabling mods without deleting files
+
+When a mod is deactivated (the `in` flag is removed from its `status`), wi-mod renames the locally stored archive by appending a `.disabled` suffix to the filename. This prevents the file from being visible as a valid archive during conflict scanning and deployment, while keeping it safely on disk. Re-activating the mod renames it back to its original filename.
+
+This rename happens only to the mod's **stored archive file** in wi-mod's own `mods/` folder — the links in `Data` are not automatically removed. Run a full re-deploy or use `POST /api/game/purge` followed by a fresh deploy to synchronise the game folder after toggling mods.
+
+## Relevant API endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/game/detect` | Auto-detect the game executable path; returns candidate paths found on disk |
+| `POST` | `/api/game/launch-path` | Save the confirmed launch path for a game; stored in the catalog |
+| `POST` | `/api/mods/:id/install` | Deploy a single mod to the game's Data folder; accepts `plugins` array for FOMOD |
+| `POST` | `/api/game/purge` | Remove all links wi-mod created for a game and reset the manifest |
+
+### Detect game path
+
+```http
+POST /api/game/detect
+Content-Type: application/json
+
+{ "gameDomain": "skyrimspecialedition" }
+```
+
+Returns a list of candidate executable paths found via common install locations. Pick the correct path and confirm it with `POST /api/game/launch-path`.
+
+### Deploy a mod
+
+```http
+POST /api/mods/a3f2c1d8e9b04f5a8c7d6e5f4b3a2c1d/install
+Content-Type: application/json
+
+{}
+```
+
+For a FOMOD mod with options already chosen:
+
+```http
+POST /api/mods/a3f2c1d8e9b04f5a8c7d6e5f4b3a2c1d/install
+Content-Type: application/json
+
+{ "plugins": ["Alternate Perspective", "High Resolution Textures"] }
+```
+
+Response on success:
+
+```json
+{
+  "kind": "STANDARD",
+  "deployed": true,
+  "linked": 47,
+  "skipped": 2,
+  "link": "hardlink",
+  "dataDir": "/path/to/SkyrimSE/Data"
+}
+```
+
+### Purge all links
+
+```http
+POST /api/game/purge
+Content-Type: application/json
+
+{ "gameDomain": "skyrimspecialedition" }
+```
+
+Removes every file listed in the manifest from `Data` and resets the manifest to empty. Returns `{ "removed": 47 }`. Only links recorded in the manifest are deleted — other files in `Data` are untouched.
+
+<Warning>
+  Always back up your game's `Data` folder before running deployment for the first time. While wi-mod is careful never to touch files it did not create, a misconfigured launch path could point to the wrong directory. A backup ensures you can recover the original game state if anything goes wrong.
+</Warning>

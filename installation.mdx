@@ -1,0 +1,100 @@
+---
+title: "Install wi-mod on Windows and Linux"
+sidebarTitle: "Installation"
+description: "Download the portable wi-mod executable for Windows (.exe) or Linux (.AppImage). No installer, no runtime dependencies — just run it."
+---
+
+wi-mod ships as a single portable binary built with Tauri v2. There is no installer, no setup wizard, and no runtime to pre-install — download the file for your operating system and run it directly. Because everything the application needs is bundled inside the executable, you can store it on a USB drive, a network share, or any folder you like and it will work without modification.
+
+## Download and Run
+
+<Steps>
+  <Step title="Go to the Releases page">
+    Open [github.com/wiarch/wi-mod/releases/latest](https://github.com/wiarch/wi-mod/releases/latest) in your browser. This always points to the most recent stable release.
+  </Step>
+  <Step title="Download the file for your OS">
+    Pick the asset that matches your platform:
+
+    - **Windows** — download the `.exe` portable binary.
+    - **Linux** — download the `.AppImage` (or the plain portable binary if listed).
+
+    Both files are self-contained; no additional packages are required at download time.
+  </Step>
+  <Step title="Run wi-mod">
+    Launch the file you just downloaded — no installation step is needed. On first run, wi-mod creates a `data/` folder next to the executable to store your library database and configuration.
+  </Step>
+</Steps>
+
+## Platform Notes
+
+<Tabs>
+  <Tab title="Windows">
+    The `.exe` release is a standalone portable binary. Key points:
+
+    - **No installation required** — double-click to launch.
+    - **USB-drive friendly** — copy the `.exe` to any drive or folder; the `data/` directory is created beside it automatically, keeping everything self-contained.
+    - **No admin rights needed** — wi-mod does not write to `Program Files`, the registry, or any system-level path.
+    - Tested on **Windows 10 and Windows 11**. Older versions of Windows are not supported.
+
+    If Windows SmartScreen shows an "unknown publisher" warning on first launch, click **More info → Run anyway**. The binary is unsigned because wi-mod is an open-source project without a commercial code-signing certificate.
+  </Tab>
+  <Tab title="Linux">
+    The Linux release is distributed as an **AppImage**, a self-contained executable format that runs on most modern distributions without any installation.
+
+    After downloading, mark the file as executable and run it:
+
+    ```bash
+    chmod +x wi-mod.AppImage
+    ./wi-mod.AppImage
+    ```
+
+    **WebKitGTK requirement:** the AppImage bundles most dependencies, but a compatible `libwebkit2gtk` must be present on the host system. This is satisfied by default on GNOME-based distributions (Ubuntu, Fedora, Arch, etc.). If the application fails to start, install the dependency manually:
+
+    ```bash
+    # Debian / Ubuntu
+    sudo apt-get install libwebkit2gtk-4.1-0
+
+    # Fedora
+    sudo dnf install webkit2gtk4.1
+
+    # Arch Linux
+    sudo pacman -S webkit2gtk-4.1
+    ```
+  </Tab>
+</Tabs>
+
+## System Requirements
+
+| Requirement | Windows | Linux |
+|---|---|---|
+| **OS version** | Windows 10 or later | Modern distribution (Ubuntu 22.04+, Fedora 38+, Arch) |
+| **WebKit runtime** | Bundled (via Tauri) | WebKitGTK 4.1 (`libwebkit2gtk-4.1`) |
+| **Python** | Not required | Not required |
+| **Java / .NET / other** | Not required | Not required |
+| **Disk space** | ~20 MB | ~20 MB |
+
+<Note>
+  Not ready to download? Try the full interface in your browser at [wiarch.github.io/wi-mod](https://wiarch.github.io/wi-mod/). The web demo stores your library data locally using your browser's IndexedDB — nothing is sent to any server.
+</Note>
+
+## Legacy Python Shell (Developers Only)
+
+If you are contributing to wi-mod or want to run directly from source before the Tauri migration is complete, you can use the legacy Python shell:
+
+```bash
+git clone https://github.com/wiarch/wi-mod.git
+cd wi-mod
+
+pip install -r requirements.txt
+python app.py
+```
+
+On Windows you can also use the provided batch script, which will launch the compiled executable if it exists in `dist/` or fall back to the Python entry-point:
+
+```bat
+scripts\wi-mod.bat
+```
+
+<Warning>
+  The Python shell is the **legacy path** maintained for development and testing only. End users should always use the Tauri portable executable from the Releases page, which requires no Python installation.
+</Warning>

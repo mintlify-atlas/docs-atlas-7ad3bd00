@@ -1,0 +1,958 @@
+---
+title: "wi-mod Internal HTTP API Reference"
+sidebarTitle: "API Reference"
+description: "Complete reference for wi-mod's local HTTP API served at 127.0.0.1. Documents all GET, POST, PUT, PATCH, and DELETE endpoints with parameters and response shapes."
+---
+
+wi-mod exposes a local-only HTTP server that listens exclusively on `127.0.0.1`. It is never reachable from the network and has no public endpoints. The Tauri WebView and the bundled web frontend both talk to it at runtime, but it is equally useful for scripting, testing, or integration work from any local process.
+
+## Base URL
+
+```
+http://127.0.0.1:47621
+```
+
+The server tries port `47621` first. If that port is already occupied, a random available port is chosen. The frontend discovers the actual port at startup; scripts can read it from the server's startup output or from the `WI_MOD_PORT` environment variable if set.
+
+## Authentication
+
+Most endpoints require a valid session. The server accepts the token in either of two ways:
+
+- **`X-Session` request header** — `X-Session: <token>`
+- **`wi_session` cookie** — set automatically by `POST /api/login`
+
+A successful login or user-creation call sets `Set-Cookie: wi_session=<token>; HttpOnly; Path=/; SameSite=Lax`. Passing `remember: true` extends the cookie lifetime to 60 days.
+
+<Note>
+  The current build ships with `LOGIN_OFF = True`, which means the session check
+  is bypassed globally. All authenticated endpoints are accessible without a
+  token. This flag will be removed before the first public release.
+</Note>
+
+The following paths are always open regardless of session state: `/api/session`, `/api/status`, `/api/login`, `/api/logout`, `/api/users`, `/api/users/lookup`, `/api/password/reset`, and all `/media/` and `/brand/` asset paths.
+
+---
+
+## Endpoints
+
+<AccordionGroup>
+
+<Accordion title="Session & Status">
+
+### `GET /api/session`
+
+Returns the current authentication state and machine information.
+
+**Response**
+
+```json
+{
+  "username": "WYDEX",
+  "role": "admin",
+  "needsPassword": false,
+  "admin": "WYDEX",
+  "machineUser": "alice",
+  "windowsUser": "alice",
+  "pcName": "ALICE-PC",
+  "quitMode": "tray",
+  "appVersion": "0.9.0"
+}
+```
+
+---
+
+### `GET /api/status`
+
+Returns real-time system metrics. Disk usage is measured relative to the wi-mod data root.
+
+**Response**
+
+```json
+{
+  "diskFreeBytes": 42949672960,
+  "diskTotalBytes": 500107862016,
+  "ramBytes": 104857600,
+  "online": true,
+  "downBps": 12345,
+  "upBps": 678
+}
+```
+
+---
+
+### `POST /api/login`
+
+Authenticate with username and password. On success, sets the `wi_session` cookie.
+
+**Request body**
+
+```json
+{ "username": "WYDEX", "password": "hunter2", "remember": true }
+```
+
+**Response**
+
+```json
+{ "username": "WYDEX", "role": "admin", "token": "<session-token>" }
+```
+
+---
+
+### `POST /api/logout`
+
+Invalidates the current session token and clears the `wi_session` cookie.
+
+**Response**
+
+```json
+{ "ok": true }
+```
+
+---
+
+### `POST /api/users`
+
+Creates the first user (or sets a password for a passwordless account). Returns the same session payload as login.
+
+**Request body**
+
+```json
+{ "username": "WYDEX", "password": "hunter2", "remember": false }
+```
+
+---
+
+### `POST /api/password/reset`
+
+Resets the password for an existing user. All existing sessions for that user are invalidated.
+
+**Request body**
+
+```json
+{ "username": "WYDEX", "password": "newpassword", "remember": false }
+```
+
+</Accordion>
+
+<Accordion title="Library & Settings">
+
+### `GET /api/library`
+
+Returns the complete library state in a single payload: all mods (with conflict annotations), all modpacks, the full catalog, UI preferences, source definitions, and a flag map showing which API keys are configured.
+
+**Response shape**
+
+```json
+{
+  "mods": [ /* Mod[] */ ],
+  "modpacks": [ /* Modpack[] */ ],
+  "catalog": {
+    "platforms": ["Nexus", "Modrinth", "CurseForge", "Steam Workshop", "ModDB", "Independiente"],
+    "games": [ /* CatalogGame[] */ ],
+    "categories": [],
+    "skills": [],
+    "rules": [],
+    "marks": {}
+  },
+  "language": "es",
+  "theme": "nexus",
+  "sources": { /* source definitions */ },
+  "keys": {
+    "nexus": true,
+    "curseforge": false,
+    "steam": false,
+    "rawg": false
+  },
+  "packsDir": "C:\\Users\\alice\\Documents\\wi-mod\\packs"
+}
+```
+
+---
+
+### `GET /api/settings`
+
+Returns the public settings object. API keys are masked (e.g. `"ab12…ef78"` or `"••••"`); the full key values are still present in the `apiKey`, `rawgApiKey`, `curseforgeApiKey`, and `steamApiKey` fields for use by the frontend.
+
+**Response shape**
+
+```json
+{
+  "hasKey": true,
+  "hint": "ab12…ef78",
+  "apiKey": "ab12...ef78",
+  "hasRawgKey": false,
+  "rawgHint": "",
+  "rawgApiKey": "",
+  "hasCurseforgeKey": false,
+  "curseforgeHint": "",
+  "curseforgeApiKey": "",
+  "hasSteamKey": false,
+  "steamHint": "",
+  "steamApiKey": "",
+  "language": "es",
+  "theme": "nexus",
+  "profile": {
+    "name": "alice",
+    "isPremium": false,
+    "hourlyRemaining": 95,
+    "hourlyLimit": 100,
+    "dailyRemaining": 995,
+    "dailyLimit": 1000
+  }
+}
+```
+
+---
+
+### `PATCH /api/settings`
+
+Updates one or more settings fields. Each key is validated before being stored (e.g. Nexus API keys are verified against the Nexus validation endpoint; invalid keys are rejected with `400`). Only the fields you include in the body are updated.
+
+**Updatable fields**
+
+| Field | Type | Notes |
+|---|---|---|
+| `apiKey` | `string` | Nexus Mods API key — validated on write |
+| `rawgApiKey` | `string` | RAWG API key — validated on write |
+| `curseforgeApiKey` | `string` | CurseForge API key — validated on write |
+| `steamApiKey` | `string` | Steam API key — validated on write |
+| `language` | `"es" \| "en"` | Switching to `"es"` triggers background localization |
+| `theme` | `string` | One of `nexus`, `modrinth`, `curseforge`, `steam`, `moddb`, `rawg` |
+
+**Response** — updated settings object (same shape as `GET /api/settings`).
+
+<Note>
+  `PATCH /api/settings` is the canonical way to update settings. The handler also
+  accepts `PUT /api/settings` for full-replacement semantics but behaves
+  identically — partial updates work in both cases.
+</Note>
+
+</Accordion>
+
+<Accordion title="Mods">
+
+### `POST /api/mods`
+
+Adds a new mod to the library. The server auto-fetches metadata from Nexus, Modrinth, or CurseForge when a recognized URL is supplied; for other platforms the `manual` object is used as the source of truth.
+
+**Request body** (Nexus URL example)
+
+```json
+{
+  "url": "https://www.nexusmods.com/skyrimspecialedition/mods/1",
+  "gameDomain": "skyrimspecialedition",
+  "modpackId": "",
+  "modpackCategoryId": "",
+  "notes": "",
+  "category": ""
+}
+```
+
+**Response** — `201 Created`
+
+```json
+{ "mod": { /* Mod object */ } }
+```
+
+---
+
+### `PUT /api/mods/:id`
+
+Replaces editable fields on a mod. Equivalent to a full PUT — send only the fields you want to change; unrecognized fields are ignored. The `id` path parameter must be a 32-character hex UUID.
+
+**Response**
+
+```json
+{ "mod": { /* updated Mod object */ } }
+```
+
+---
+
+### `DELETE /api/mods/:id`
+
+Removes a mod and deletes all locally stored files associated with it (downloaded archives, cover images). Returns `404` if the mod does not exist.
+
+**Response**
+
+```json
+{ "ok": true }
+```
+
+---
+
+### `POST /api/mods/assign`
+
+Bulk-assigns one or more mods to a category, platform, or modpack in a single request. At least one of `category`, `platform`, or `modpackId` must be present.
+
+**Request body**
+
+```json
+{
+  "ids": ["<mod-id-1>", "<mod-id-2>"],
+  "category": "Weapons",
+  "platform": "Nexus",
+  "modpackId": "<pack-id>",
+  "modpackCategoryId": "<pack-cat-id>"
+}
+```
+
+**Response**
+
+```json
+{ "mods": [ /* updated Mod[] */ ], "count": 2 }
+```
+
+---
+
+### `POST /api/mods/active`
+
+Bulk-toggles the active (`in`) status for a list of mods, or for all mods in a modpack. Only mods that have at least one downloaded file can be toggled; mods without files are silently skipped.
+
+**Request body — by ID list**
+
+```json
+{ "ids": ["<mod-id-1>", "<mod-id-2>"], "active": true }
+```
+
+**Request body — by modpack**
+
+```json
+{ "modpackId": "<pack-id>", "active": false }
+```
+
+**Response**
+
+```json
+{ "mods": [ /* updated Mod[] */ ], "count": 2, "active": true }
+```
+
+---
+
+### `POST /api/mods/order`
+
+Reorders mods within a modpack by assigning sequential `packOrder` values. All IDs in the list must belong to the same modpack.
+
+**Request body**
+
+```json
+{ "ids": ["<mod-id-1>", "<mod-id-2>", "<mod-id-3>"] }
+```
+
+**Response**
+
+```json
+{ "mods": [ /* reordered Mod[] */ ] }
+```
+
+---
+
+### `POST /api/mods/clone`
+
+Duplicates one or more mods. Each clone gets a new UUID, the suffix `" copia"` appended to its name, and an empty `files` list (downloaded files are not duplicated).
+
+**Request body**
+
+```json
+{ "ids": ["<mod-id-1>"] }
+```
+
+**Response** — `201 Created`
+
+```json
+{ "mods": [ /* cloned Mod[] */ ], "count": 1 }
+```
+
+</Accordion>
+
+<Accordion title="Modpacks">
+
+### `GET /api/modpacks`
+
+Lists all modpacks.
+
+**Response**
+
+```json
+{ "modpacks": [ /* Modpack[] */ ] }
+```
+
+---
+
+### `POST /api/modpacks`
+
+Creates a new modpack. `name` and `gameDomain` are required.
+
+**Request body**
+
+```json
+{
+  "name": "My Skyrim Build",
+  "gameDomain": "skyrimspecialedition",
+  "gameName": "Skyrim Special Edition",
+  "notes": "",
+  "categories": [{ "name": "Gameplay" }, { "name": "Visuals" }]
+}
+```
+
+**Response** — `201 Created`
+
+```json
+{ "modpack": { /* Modpack object */ } }
+```
+
+---
+
+### `PATCH /api/modpacks/:id`
+
+Updates modpack fields. Removing a category from the `categories` array automatically clears `modpackCategoryId` on all mods that referenced it.
+
+**Response**
+
+```json
+{ "modpack": { /* updated Modpack */ } }
+```
+
+---
+
+### `DELETE /api/modpacks/:id`
+
+Deletes a modpack. All mods that belonged to it have their `modpackId` and `modpackCategoryId` cleared; they remain in the library.
+
+**Response**
+
+```json
+{ "ok": true }
+```
+
+---
+
+### `POST /api/modpacks/:id/categories`
+
+Adds a category to a modpack. Category names must be unique within the pack (case-insensitive).
+
+**Request body**
+
+```json
+{ "name": "New Category", "emoji": "⚔️", "notes": "" }
+```
+
+**Response** — `201 Created` — full modpack object.
+
+---
+
+### `PATCH /api/modpacks/:packId/categories/:catId`
+
+Updates a category. Uses the same rules as creation.
+
+---
+
+### `DELETE /api/modpacks/:packId/categories/:catId`
+
+Removes a category from a modpack. Mods that referenced the category keep their `modpackId` but have `modpackCategoryId` cleared.
+
+</Accordion>
+
+<Accordion title="Search">
+
+### `GET /api/nexus/search?q=&game=`
+
+Searches Nexus Mods for the given query within the specified game domain. Requires `apiKey` to be set in settings. Each result includes a `savedId` field — the ID of the matching mod already in the library, or `""` if not saved.
+
+**Query parameters**
+
+| Param | Required | Description |
+|---|---|---|
+| `q` | Yes | Search query string |
+| `game` | Yes | Nexus game domain, e.g. `skyrimspecialedition` |
+| `platform` | No | Defaults to `"Nexus"`. Non-Nexus values return `{ "supported": false }` |
+
+**Response**
+
+```json
+{ "results": [ /* NexusSearchHit[] with savedId */ ], "supported": true, "platform": "Nexus" }
+```
+
+---
+
+### `GET /api/modrinth/search?q=&mc=&loader=`
+
+Searches Modrinth projects. No API key required.
+
+**Query parameters**
+
+| Param | Required | Description |
+|---|---|---|
+| `q` | Yes | Search query |
+| `mc` | No | Minecraft version filter, e.g. `1.20.1` |
+| `loader` | No | Loader filter: `fabric`, `forge`, `quilt`, `neoforge` |
+
+**Response**
+
+```json
+{ "results": [ /* ModrinthHit[] with savedId */ ], "supported": true, "platform": "Modrinth" }
+```
+
+---
+
+### `GET /api/curseforge/search?q=&game=&mc=&loader=`
+
+Searches CurseForge. Requires `curseforgeApiKey` to be set in settings.
+
+**Query parameters**
+
+| Param | Required | Description |
+|---|---|---|
+| `q` | Yes | Search query |
+| `game` | No | CurseForge game slug |
+| `mc` | No | Minecraft version filter |
+| `loader` | No | Loader filter |
+
+**Response**
+
+```json
+{ "results": [ /* CurseForgeHit[] with savedId */ ], "supported": true, "platform": "CurseForge" }
+```
+
+---
+
+### `GET /api/rawg/search?q=`
+
+Searches the RAWG game database for game metadata and cover art. Requires `rawgApiKey`.
+
+**Response**
+
+```json
+{ "results": [ /* RawgGame[] */ ] }
+```
+
+---
+
+### `GET /api/rawg/resolve?domain=&name=`
+
+Resolves game metadata from RAWG for a known game domain and attempts to enrich the catalog entry. Used internally after game detection.
+
+**Query parameters**
+
+| Param | Description |
+|---|---|
+| `domain` | Nexus game domain, e.g. `gtasa` |
+| `name` | Human-readable game name used as fallback search query |
+
+**Response**
+
+```json
+{ "game": { /* RawgGame or null */ } }
+```
+
+</Accordion>
+
+<Accordion title="Catalog">
+
+### `POST /api/catalog`
+
+Adds or updates a game or category in the catalog. For games, if `rawgId` is supplied without a `gameDomain`, the server fetches full game metadata from RAWG automatically.
+
+**Request body — game**
+
+```json
+{
+  "kind": "game",
+  "gameDomain": "skyrimspecialedition",
+  "gameName": "The Elder Scrolls V: Skyrim Special Edition",
+  "rawgId": 12447
+}
+```
+
+**Request body — category**
+
+```json
+{ "kind": "category", "name": "Gameplay" }
+```
+
+**Response**
+
+```json
+{ "catalog": { /* full Catalog object */ } }
+```
+
+---
+
+### `POST /api/catalog/mark`
+
+Sets an emoji or image URL on a catalog item (platform, category, modpack, or pack category). Passing empty strings for both fields removes the mark.
+
+**Request body**
+
+```json
+{
+  "kind": "platform",
+  "id": "Nexus",
+  "emoji": "🟤",
+  "imageUrl": ""
+}
+```
+
+---
+
+### `POST /api/catalog/rename`
+
+Renames a category. All mods using the old category name are updated automatically.
+
+**Request body**
+
+```json
+{ "from": "Gameplay", "name": "Jugabilidad" }
+```
+
+---
+
+### `POST /api/catalog/game-flag`
+
+Sets `pinned` or `favorite` flags on a catalog game. At most 3 games can be pinned simultaneously; pinning a 4th removes the oldest pin. Only one game can be `favorite` at a time.
+
+**Request body**
+
+```json
+{ "id": "skyrimspecialedition", "pin": true, "favorite": false }
+```
+
+</Accordion>
+
+<Accordion title="Game">
+
+### `POST /api/game/detect`
+
+Auto-detects likely install paths for a game on the current machine. Returns a list of candidate paths.
+
+**Request body**
+
+```json
+{ "id": "skyrimspecialedition" }
+```
+
+**Response**
+
+```json
+{ "candidates": ["/path/to/game", "..."], "game": { /* CatalogGame */ } }
+```
+
+---
+
+### `POST /api/game/launch-path`
+
+Saves (or clears) the launch path for a game in the catalog.
+
+**Request body**
+
+```json
+{
+  "id": "skyrimspecialedition",
+  "path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Skyrim Special Edition\\SkyrimSE.exe"
+}
+```
+
+**Response**
+
+```json
+{ "catalog": { /* updated Catalog */ }, "game": { /* updated CatalogGame */ } }
+```
+
+---
+
+### `POST /api/game/launch`
+
+Launches a game. For Minecraft domains, a modpack `name` (instance name) is required. For other games, the server uses the saved `launchPath` or falls back to a `steam://` URI if `steamAppId` is set.
+
+**Request body**
+
+```json
+{ "id": "skyrimspecialedition" }
+```
+
+**Response**
+
+```json
+{ "ok": true, "path": "...", "catalog": { /* Catalog */ }, "game": { /* CatalogGame */ } }
+```
+
+---
+
+### `POST /api/game/purge`
+
+Removes all wi-mod deploy symlinks / hardlinks for a game without touching mod archives. Useful for a clean redeploy.
+
+**Request body**
+
+```json
+{ "id": "skyrimspecialedition" }
+```
+
+</Accordion>
+
+<Accordion title="Minecraft">
+
+### `GET /api/minecraft/versions`
+
+Returns a list of available Minecraft release version strings from Mojang's manifest.
+
+**Response**
+
+```json
+{ "versions": ["1.21.1", "1.20.4", "1.20.1", "..."] }
+```
+
+---
+
+### `GET /api/minecraft/loaders?version=`
+
+Returns available mod loaders (Forge, Fabric, Quilt, NeoForge, Vanilla) and their available loader versions for the specified Minecraft version.
+
+**Query parameters**
+
+| Param | Description |
+|---|---|
+| `version` | Minecraft version string, e.g. `1.20.1` |
+
+**Response**
+
+```json
+{ "loaders": [ /* LoaderInfo[] */ ] }
+```
+
+---
+
+### `POST /api/minecraft/profiles`
+
+Creates a new Minecraft modded instance directory (profile). If an identical profile (same `mc_version`, `loader_type`, `loader_version`) already exists, the call is idempotent and returns the existing profile.
+
+**Request body**
+
+```json
+{
+  "name": "My Fabric 1.20.1",
+  "mc_version": "1.20.1",
+  "loader_type": "fabric",
+  "loader_version": "0.15.11"
+}
+```
+
+**Response** — `201 Created`
+
+```json
+{ "profile": { /* profile.json contents */ }, "name": "My Fabric 1.20.1" }
+```
+
+---
+
+### `POST /api/minecraft/profiles/install`
+
+Downloads and installs the loader JAR for an existing profile. Vanilla profiles are a no-op. Forge/NeoForge profiles require Java to be on `PATH` or installed via `/api/java/install`.
+
+**Request body**
+
+```json
+{ "name": "My Fabric 1.20.1" }
+```
+
+**Response**
+
+```json
+{ "ok": true, "name": "My Fabric 1.20.1", "version": "fabric-loader-0.15.11-1.20.1" }
+```
+
+---
+
+### `POST /api/minecraft/launch`
+
+Stages enabled mod JARs into the profile's `.minecraft/mods` directory and launches the game via the bundled launcher wrapper.
+
+**Request body**
+
+```json
+{
+  "name": "My Fabric 1.20.1",
+  "username": "Steve",
+  "uuid": "",
+  "accessToken": ""
+}
+```
+
+**Response**
+
+```json
+{ "ok": true, "name": "My Fabric 1.20.1", "pid": 12345 }
+```
+
+</Accordion>
+
+<Accordion title="Import / Export">
+
+### `POST /api/export`
+
+Exports a filtered subset of the library as a `.zip` archive. When `dest` is provided, the file is written to that path and the response is JSON. When `dest` is omitted, the archive is streamed back as `application/zip` with a `Content-Disposition: attachment` header.
+
+**Request body**
+
+```json
+{
+  "scope": "modpack",
+  "modpack": "<pack-id>",
+  "game": null,
+  "platform": null,
+  "ids": null,
+  "dest": "C:\\Users\\alice\\Documents\\wi-mod\\packs\\my-build.zip"
+}
+```
+
+`scope` must be one of `"all"`, `"platform"`, `"game"`, `"modpack"`, or `"selected"`.
+
+**Response (with `dest`)**
+
+```json
+{ "ok": true, "path": "C:\\...\\my-build.zip", "name": "my-build.zip" }
+```
+
+---
+
+### `POST /api/import/preview`
+
+Peeks inside a wi-mod `.zip` archive without importing anything. Accepts either a `multipart/form-data` file upload, or `application/json` with a `path` field pointing to a local file.
+
+**Response**
+
+```json
+{ "preview": { /* LibraryPreview */ } }
+```
+
+---
+
+### `POST /api/import`
+
+Imports a wi-mod `.zip` archive into the library. Accepts the same input formats as the preview endpoint. Scope fields in the multipart form (or JSON body) control what is imported.
+
+**Response**
+
+```json
+{ "result": { /* ImportResult */ } }
+```
+
+</Accordion>
+
+<Accordion title="Utilities">
+
+### `POST /api/preview`
+
+Fetches mod metadata from a URL without saving anything. Supports Nexus, Modrinth, CurseForge, and arbitrary web pages (title + meta description). Returns a `duplicate` flag if the URL is already in the library.
+
+**Request body**
+
+```json
+{ "url": "https://www.nexusmods.com/skyrimspecialedition/mods/1" }
+```
+
+**Response**
+
+```json
+{
+  "name": "SkyUI",
+  "summary": "...",
+  "author": "schlangster",
+  "platform": "Nexus",
+  "duplicate": false
+}
+```
+
+---
+
+### `POST /api/refresh`
+
+Checks all mods that have a Nexus, Modrinth, or CurseForge link for upstream updates. Sets `updateAvailable: true` and `remoteVersion` on mods that have a newer version. Stops early if Nexus returns `429 Too Many Requests`.
+
+**Response**
+
+```json
+{ "checked": 42, "available": 3, "failed": [] }
+```
+
+---
+
+### `POST /api/translate`
+
+Translates a plain text string using the server-side translation service.
+
+**Request body**
+
+```json
+{ "text": "A lightweight UI overhaul.", "source": "en", "target": "es" }
+```
+
+**Response**
+
+```json
+{ "text": "Una revisión ligera de la interfaz." }
+```
+
+---
+
+### `POST /api/images`
+
+Uploads an image (`multipart/form-data`, max 8 MB). Accepted formats: `.jpg`, `.png`, `.webp`, `.gif`. Returns a `/media/` path usable as `pictureFile` or `imageUrl`.
+
+**Response** — `201 Created`
+
+```json
+{ "imageUrl": "/media/images/a1b2c3d4e5f6.png" }
+```
+
+---
+
+### `POST /api/localize`
+
+Batch-translates missing `summaryEs` and `categoryEs` fields for up to 40 mods and 20 catalog game descriptions in a single call. Only runs if the current language is `"es"`.
+
+**Response**
+
+```json
+{ "mods": 12, "games": 3, "language": "es", "catalog": { /* updated Catalog */ } }
+```
+
+---
+
+### `POST /api/java/install`
+
+Downloads and installs an Adoptium JDK compatible with the specified Minecraft version into the wi-mod `java/` directory.
+
+**Request body**
+
+```json
+{ "mc_version": "1.20.1" }
+```
+
+**Response**
+
+```json
+{ "ok": true, "java": "/path/to/java/bin/java" }
+```
+
+</Accordion>
+
+</AccordionGroup>
+
+---
+
+## Error Responses
+
+All errors are returned as JSON with an `error` string field. HTTP status codes follow standard conventions:
+
+| Code | Meaning |
+|---|---|
+| `400` | Validation error or bad request body |
+| `401` | Missing or invalid session |
+| `404` | Resource not found |
+| `409` | Duplicate mod (`duplicate: true`, `existingId`, `existingName` also present) |
+| `500` | Unexpected server error (message included) |
+| `502` | Upstream API error |
+
+```json
+{ "error": "Ese mod ya está en la biblioteca.", "duplicate": true, "existingId": "abc123...", "existingName": "SkyUI" }
+```

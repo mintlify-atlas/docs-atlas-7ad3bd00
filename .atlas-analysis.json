@@ -1,0 +1,128 @@
+{
+  "projectType": "saas",
+  "projectName": "wi-mod",
+  "projectDescription": "A local, portable, multi-platform mod library manager that centralizes mods from Nexus Mods, Modrinth, CurseForge, Steam Workshop, and ModDB into a single offline desktop application.",
+  "theme": "palm",
+  "primaryColor": "#e08a2c",
+  "lightColor": "#f6efe6",
+  "darkColor": "#141210",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/library",
+              "features/platforms",
+              "features/modpacks",
+              "features/deployment"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/api-keys",
+              "configuration/settings",
+              "configuration/themes"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/adding-mods",
+              "guides/minecraft",
+              "guides/import-export",
+              "guides/game-launch"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "dev/overview",
+              "dev/tech-stack",
+              "dev/tauri-migration"
+            ]
+          },
+          {
+            "group": "Internal API",
+            "pages": [
+              "dev/api-reference",
+              "dev/storage",
+              "dev/external-providers"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "dev/local-setup",
+              "dev/building",
+              "dev/changelog"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "100% portable single executable — no installer or external runtime required",
+    "Privacy-first: all data stored locally in SQLite/IndexedDB, no cloud accounts or telemetry",
+    "Multi-platform mod integration: Nexus Mods, Modrinth, CurseForge, Steam Workshop, ModDB",
+    "Game catalog with RAWG metadata enrichment for cover art and descriptions",
+    "Modpack groups with per-mod priority, conflict detection, and enable/disable toggling",
+    "One-click mod deployment via hardlinks/symlinks to game Data folder",
+    "Minecraft profile creator with Fabric, Forge, NeoForge, Quilt, and Vanilla support",
+    "Import/export library as portable .wimod.zip bundles",
+    "Dynamic UI themes per platform: Nexus, Modrinth, CurseForge, Steam, ModDB",
+    "Multilingual (English and Spanish) with automatic system language detection",
+    "Dual runtime: Python/pywebview (current) and Tauri v2/Rust (migration target)"
+  ],
+  "publicApiSurface": [
+    "GET /api/library — full mod library, modpacks, catalog, settings flags",
+    "GET /api/settings — public settings with masked API key hints",
+    "GET /api/nexus/search?q=&game= — search Nexus Mods",
+    "GET /api/modrinth/search?q=&mc=&loader= — search Modrinth",
+    "GET /api/curseforge/search?q=&game=&mc=&loader= — search CurseForge",
+    "GET /api/rawg/search?q= — search RAWG game database",
+    "GET /api/rawg/resolve?domain=&name= — resolve game metadata from RAWG",
+    "GET /api/status — disk, RAM, network, and online status",
+    "GET /api/minecraft/versions — list available Minecraft release versions",
+    "GET /api/minecraft/loaders?version= — available mod loaders per MC version",
+    "POST /api/mods — add a mod to the library",
+    "PUT /api/mods/:id — update a mod",
+    "DELETE /api/mods/:id — remove a mod",
+    "POST /api/mods/assign — bulk assign category, platform, or modpack",
+    "POST /api/mods/active — bulk toggle active/inactive",
+    "POST /api/mods/clone — duplicate selected mods",
+    "POST /api/mods/order — reorder mods by priority",
+    "POST /api/modpacks — create a modpack",
+    "POST /api/catalog — add game or category to catalog",
+    "POST /api/game/detect — auto-detect game install path",
+    "POST /api/game/launch — launch a game",
+    "POST /api/minecraft/profiles — create isolated Minecraft profile",
+    "POST /api/minecraft/profiles/install — install a mod into a Minecraft profile",
+    "POST /api/minecraft/launch — launch Minecraft via profile",
+    "POST /api/export — export library as .wimod.zip",
+    "POST /api/import — import library from .wimod.zip",
+    "POST /api/translate — translate mod description via MyMemory",
+    "POST /api/refresh — refresh mod metadata from source platform",
+    "Tauri command: fetch_external_api(provider, method, path, apiKey, query, body)",
+    "Tauri command: destroy_splashscreen()",
+    "StorageAdapter interface: init(), getMods(), saveMod(), deleteMod(), getSettings(), saveSettings()",
+    "TypeScript API clients: nexusGet(), curseforgeGet(), steamGet(), rawgGet(), modrinthGet()"
+  ]
+}

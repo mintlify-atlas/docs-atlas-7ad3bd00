@@ -1,0 +1,176 @@
+---
+title: "Modpacks: Group and Prioritize Your Mods"
+sidebarTitle: "Modpacks"
+description: "wi-mod modpacks let you group related mods, assign load order priorities, detect file conflicts, and enable or disable entire packs at once."
+---
+
+A modpack in wi-mod is a named collection of mods for a specific game. Modpacks let you separate different playthroughs, share themed collections, and manage load order as a group rather than mod by mod. You might have one modpack for a lightly patched vanilla run and another for a full graphics overhaul — both targeting the same game, enabled and disabled independently without touching each other's files.
+
+## Creating a modpack
+
+Send a `POST /api/modpacks` request with the modpack name and game domain:
+
+```http
+POST /api/modpacks
+Content-Type: application/json
+
+{
+  "name": "Vanilla Plus",
+  "gameDomain": "skyrimspecialedition",
+  "gameName": "The Elder Scrolls V: Skyrim Special Edition",
+  "notes": "Quality-of-life mods only — no gameplay changes"
+}
+```
+
+The response returns the new modpack object including its generated `id` (32-char hex UUID):
+
+```json
+{
+  "modpack": {
+    "id": "a3f2c1d8e9b04f5a8c7d6e5f4b3a2c1d",
+    "name": "Vanilla Plus",
+    "gameDomain": "skyrimspecialedition",
+    "gameName": "The Elder Scrolls V: Skyrim Special Edition",
+    "notes": "Quality-of-life mods only — no gameplay changes",
+    "categories": [],
+    "createdAt": "2025-01-15T10:30:00Z",
+    "updatedAt": "2025-01-15T10:30:00Z"
+  }
+}
+```
+
+## Assigning mods to a modpack
+
+Use `POST /api/mods/assign` to move one or more mods into a modpack. You can optionally specify a `modpackCategoryId` to place the mods into a sub-category within the pack:
+
+```http
+POST /api/mods/assign
+Content-Type: application/json
+
+{
+  "ids": ["mod-id-1", "mod-id-2", "mod-id-3"],
+  "modpackId": "a3f2c1d8e9b04f5a8c7d6e5f4b3a2c1d",
+  "modpackCategoryId": "cat-id-optional"
+}
+```
+
+Each mod also stores a `modpackNotes` field — a freeform annotation scoped to that modpack assignment. This lets you record why a particular mod was included, any configuration steps, or compatibility warnings specific to this pack context.
+
+You can also assign a mod to a modpack at creation time by including `modpackId` in the `POST /api/mods` body.
+
+## Priority and load order
+
+Every mod has an integer `priority` field scoped to its game. **A higher priority number means the mod loads last** — and therefore wins when two active mods share the same file path. This mirrors how most mod managers work: the last mod to write a file is the one the game sees.
+
+Priorities are assigned automatically (1, 2, 3 … N in the order mods were added) and renumbered if you move a mod. To set a specific priority, include a `priority` key when updating a mod:
+
+```http
+PATCH /api/mods/:id
+Content-Type: application/json
+
+{ "priority": 42 }
+```
+
+wi-mod renumbers all sibling mods in the same game to keep priorities contiguous (1 … N) after every change.
+
+To reorder a group of mods within a modpack by dragging them in the UI, the frontend sends:
+
+```http
+POST /api/mods/order
+Content-Type: application/json
+
+{ "ids": ["mod-id-3", "mod-id-1", "mod-id-2"] }
+```
+
+The `ids` array defines the new `packOrder` sequence. All mods must belong to the same modpack.
+
+## Conflict detection
+
+wi-mod scans the zip archives of every **active** mod in the same game and compares the file paths stored inside each archive. Two active mods conflict when they both contain a file at the same internal path.
+
+Conflict data is computed on every `GET /api/library` call and annotated on each mod:
+
+```json
+"conflict": {
+  "wins": 1,
+  "loses": 0,
+  "overwrites": ["Landscape Overhaul HD"],
+  "overwrittenBy": []
+}
+```
+
+| Field | Description |
+|---|---|
+| `wins` | Number of active mods this mod overrides (it has higher priority) |
+| `loses` | Number of active mods that override this mod (they have higher priority) |
+| `overwrites` | Names of mods whose conflicting files this mod replaces |
+| `overwrittenBy` | Names of mods that replace this mod's conflicting files |
+
+The conflict check is read-only and does not modify the library. It uses a file-mtime cache to avoid re-reading archives on every request.
+
+<Note>
+  Only mods with the `in` flag in their `status` are included in conflict analysis. Downloaded but inactive mods are ignored.
+</Note>
+
+## Enabling and disabling an entire modpack
+
+To toggle all mods in a modpack active or inactive at once, send `POST /api/mods/active` with the `modpackId` field instead of individual `ids`:
+
+```http
+POST /api/mods/active
+Content-Type: application/json
+
+{
+  "modpackId": "a3f2c1d8e9b04f5a8c7d6e5f4b3a2c1d",
+  "active": false
+}
+```
+
+This is equivalent to calling `set_modpack_active` in the library, which collects all mod IDs belonging to that pack and calls `set_mods_active` on them. Only downloaded mods (those with `got` in their status) are affected; mods that have not been downloaded yet are skipped.
+
+The response lists every mod that was changed along with its new status.
+
+## Modpack categories
+
+Modpacks support internal sub-categories (`modpackCategoryId`) to help organise large collections. For example, a Skyrim modpack might have categories like "Textures", "Gameplay", and "UI". Categories are managed on the modpack object:
+
+<Steps>
+  <Step title="Add a category">
+    ```http
+    POST /api/modpacks/:packId/categories
+    Content-Type: application/json
+
+    { "name": "Textures", "emoji": "🎨" }
+    ```
+  </Step>
+  <Step title="Assign mods to the category">
+    ```http
+    POST /api/mods/assign
+    Content-Type: application/json
+
+    {
+      "ids": ["mod-id-1", "mod-id-2"],
+      "modpackId": "a3f2c1d8e9b04f5a8c7d6e5f4b3a2c1d",
+      "modpackCategoryId": "cat-id-of-textures"
+    }
+    ```
+  </Step>
+  <Step title="Update or rename a category">
+    ```http
+    PATCH /api/modpacks/:packId/categories/:catId
+    Content-Type: application/json
+
+    { "name": "Textures & Meshes", "emoji": "🖼️" }
+    ```
+  </Step>
+  <Step title="Delete a category">
+    ```http
+    DELETE /api/modpacks/:packId/categories/:catId
+    ```
+    Mods assigned to that category remain in the modpack; their `modpackCategoryId` is cleared.
+  </Step>
+</Steps>
+
+<Tip>
+  Use modpack categories to mirror the structure of a mod guide or to separate mods by install phase (e.g. "Install first", "Overwrite safe", "Patches"). The category is visible in the library card and can carry an emoji and optional image URL for quick recognition.
+</Tip>

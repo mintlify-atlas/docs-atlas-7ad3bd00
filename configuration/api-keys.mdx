@@ -1,0 +1,153 @@
+---
+title: "Configure API Keys for Nexus, CurseForge, RAWG, and Steam"
+sidebarTitle: "API Keys"
+description: "wi-mod uses API keys from Nexus Mods, CurseForge, RAWG, and Steam. Learn where to get each key and how to add it to wi-mod's Settings."
+---
+
+wi-mod connects to several modding and gaming platforms on your behalf. Some of those platforms — Nexus Mods, CurseForge, RAWG, and Steam — require a personal API key before they will serve data. Without the relevant key, features that depend on that platform (searching, metadata fetching, direct download links) will be unavailable. Modrinth and ModDB do not require any key. This page explains where to get each key and the two ways to supply them to wi-mod.
+
+## Supported platforms
+
+<AccordionGroup>
+  <Accordion title="Nexus Mods (required for Nexus features)">
+    A Nexus Mods API key is required to look up mod metadata, validate your account, and — with a Premium account — trigger direct download links through the API.
+
+    **Get your key**
+
+    1. Sign in at [nexusmods.com](https://www.nexusmods.com).
+    2. Go to **Account → API Keys**: [nexusmods.com/users/myaccount?tab=api](https://www.nexusmods.com/users/myaccount?tab=api).
+    3. Under **Personal API Key**, copy the displayed key.
+
+    A free account is enough to browse and fetch mod metadata. Premium is needed for direct download links via the Nexus API.
+
+    **Rate limits**
+
+    Nexus Mods enforces hourly and daily request quotas. wi-mod reads these limits from response headers after every API call and displays them in **Settings → Profile**:
+
+    | Field | Meaning |
+    |---|---|
+    | `hourlyRemaining` / `hourlyLimit` | Calls left this hour out of the total hourly allowance |
+    | `dailyRemaining` / `dailyLimit` | Calls left today out of the total daily allowance |
+
+    **Environment variable**
+
+    ```sh
+    WI_MOD_NEXUS_KEY=your_nexus_key
+    # Legacy alias also accepted:
+    WI_MOD_API_KEY=your_nexus_key
+    ```
+  </Accordion>
+
+  <Accordion title="CurseForge (required for CurseForge search and download)">
+    A CurseForge API key is required for all CurseForge operations — searching mods, fetching project details, and resolving download URLs.
+
+    **Get your key**
+
+    1. Create a free developer account at [console.curseforge.com](https://console.curseforge.com/).
+    2. Generate a new API key from the developer console.
+    3. Copy the key value.
+
+    **Environment variable**
+
+    ```sh
+    WI_MOD_CURSEFORGE_KEY=your_curseforge_key
+    ```
+  </Accordion>
+
+  <Accordion title="RAWG (optional — game cover art and descriptions)">
+    RAWG is a game database that wi-mod queries for cover images, descriptions, platform lists, and release dates. The key is optional: without it, games in your library will appear without cover art or enriched metadata.
+
+    **Get your key**
+
+    1. Register at [rawg.io/apidocs](https://rawg.io/apidocs) (free tier available).
+    2. Create an application and copy the generated key.
+
+    **Environment variable**
+
+    ```sh
+    WI_MOD_RAWG_KEY=your_rawg_key
+    ```
+  </Accordion>
+
+  <Accordion title="Steam (optional — Steam Workshop metadata)">
+    A Steam Web API key lets wi-mod retrieve Steam Workshop item metadata. It is optional and only affects Steam Workshop entries in your library.
+
+    **Get your key**
+
+    1. Sign in to your Steam account and visit [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey).
+    2. Register a domain name (any value works for local tools) and copy the key.
+
+    **Environment variable**
+
+    ```sh
+    WI_MOD_STEAM_KEY=your_steam_key
+    ```
+  </Accordion>
+
+  <Accordion title="Modrinth (no key needed)">
+    Modrinth exposes a fully public API. wi-mod can search and fetch Modrinth projects without any configuration.
+  </Accordion>
+
+  <Accordion title="ModDB (no key needed)">
+    ModDB does not provide a public API. wi-mod supports ModDB entries through manual URL entry only — no key is required or used.
+  </Accordion>
+</AccordionGroup>
+
+## Adding keys in the Settings panel
+
+The easiest way to set or rotate a key is through the wi-mod Settings panel:
+
+<Steps>
+  <Step title="Open Settings">
+    Click the **Settings** icon in the wi-mod sidebar (or press the settings shortcut for your platform).
+  </Step>
+  <Step title="Locate the API Keys section">
+    Each platform has its own input field: **Nexus API Key**, **CurseForge API Key**, **RAWG API Key**, and **Steam API Key**.
+  </Step>
+  <Step title="Paste your key and save">
+    Paste the key into the appropriate field and confirm. wi-mod immediately validates the key against the platform API before saving. If validation fails, the previous value is kept.
+  </Step>
+</Steps>
+
+## Adding keys via `data/keys.json`
+
+For headless setups or automated installs, create a file named `keys.json` inside the `data/` directory next to the wi-mod executable:
+
+```json
+{
+  "nexus": "YOUR_NEXUS_KEY",
+  "rawg": "YOUR_RAWG_KEY",
+  "curseforge": "YOUR_CURSEFORGE_KEY",
+  "steam": "YOUR_STEAM_KEY"
+}
+```
+
+wi-mod also accepts the following field name aliases in `keys.json`:
+
+| Alias | Resolved to |
+|---|---|
+| `nexus`, `nexusApiKey`, `apiKey` | Nexus Mods key |
+| `rawg`, `rawgApiKey` | RAWG key |
+| `curseforge`, `curseforgeApiKey` | CurseForge key |
+| `steam`, `steamApiKey` | Steam key |
+
+This file is gitignored by default. A `keys.example.json` template is included in the repository for reference.
+
+## Adding keys via environment variables
+
+All four keys can also be injected at launch through environment variables. This is useful for CI environments or when managing wi-mod with a launcher script:
+
+```sh
+WI_MOD_NEXUS_KEY=abc123        # Nexus Mods (WI_MOD_API_KEY also accepted)
+WI_MOD_RAWG_KEY=abc123         # RAWG
+WI_MOD_CURSEFORGE_KEY=abc123   # CurseForge
+WI_MOD_STEAM_KEY=abc123        # Steam
+```
+
+<Tip>
+  Keys supplied via environment variables or `keys.json` are loaded at startup as **bootstrap defaults**. They are written to `data/settings.json` only if no key for that platform has already been saved there. This means existing keys in Settings are never silently overwritten by an environment variable change.
+</Tip>
+
+<Note>
+  All keys are stored exclusively in `data/settings.json` on your local machine. wi-mod never transmits your API keys to any external server — they are sent only directly to the respective platform APIs (Nexus, CurseForge, RAWG, Steam) when wi-mod makes a request on your behalf.
+</Note>

@@ -1,0 +1,109 @@
+---
+title: "wi-mod Architecture: Local HTTP Server and Shared UI"
+sidebarTitle: "Overview"
+description: "wi-mod separates concerns into a local HTTP API (Python or Rust) and a shared HTML/CSS/JS frontend. Learn how these layers communicate and where data lives."
+---
+
+wi-mod is built around one core idea: a single shared UI (`web/`) that can be driven by two completely different backends — a Python HTTP server today, and a Tauri v2 Rust app tomorrow. The frontend never knows which runtime is underneath; it speaks plain HTTP fetch or Tauri `invoke()` calls, and the backend handles the rest.
+
+## Repository layout
+
+```
+wi-mod/
+├── web/                   # Shared UI: index.html, app.js, styles.css
+├── src/                   # Vite + TypeScript entry point (Tauri build)
+├── src-tauri/             # Rust Tauri v2 application
+│   ├── src/lib.rs         # Tauri setup, migrations, command registration
+│   ├── src/http_proxy.rs  # fetch_external_api command (reqwest)
+│   └── tauri.conf.json    # Window config, bundle targets, SQL plugin
+├── wi_mod/                # Python package: server, library, API clients
+│   └── server.py          # App class, make_server(), make_handler()
+├── app.py                 # Python entrypoint: server + pywebview + system tray
+├── data/                  # Runtime data directory (next to the executable)
+│   ├── library.json       # Mod library (Python legacy)
+│   ├── settings.json      # App settings (Python legacy)
+│   ├── wi-mod.sqlite      # SQLite database (future Tauri path)
+│   ├── images/            # Downloaded mod thumbnails
+│   └── cache/             # Nexus category/game cache
+└── scripts/               # PyInstaller spec + launch batch (legacy)
+```
+
+## Request flow — Python path
+
+When running through `app.py` and `wi_mod/server.py`, every UI action follows this path:
+
+```
+Frontend JS (web/)
+  │  fetch("http://127.0.0.1:{port}/api/...")
+  ▼
+Python ThreadingHTTPServer  ←──────────────────┐
+  │  make_handler(app) dispatches GET/POST/...  │
+  ▼                                             │
+Library / Nexus / Modrinth / CurseForge        │
+  │  urllib.request (stdlib, no third-party)   │
+  ▼                                             │
+JSON response ────────────────────────────────►┘
+  │
+  ▼
+Frontend renders result
+```
+
+The server binds exclusively to `127.0.0.1` — it is never reachable from the network.
+
+## Request flow — Tauri path
+
+When running through `npm run tauri:dev` or a Tauri release binary, external API calls bypass the Python server entirely:
+
+```
+Frontend JS (src/ → dist/)
+  │  invoke('fetch_external_api', { request })
+  ▼
+Tauri command: http_proxy.rs::fetch_external_api
+  │  reqwest client (Rust, async, rustls-tls)
+  │  injects correct auth header per provider
+  ▼
+External API  (Nexus / CurseForge / Steam / RAWG / Modrinth)
+  │
+  ▼
+FetchExternalResponse  {status, ok, headers, body}
+  │
+  ▼
+Frontend renders result
+```
+
+Local library data (mods, settings) is read from SQLite via `@tauri-apps/plugin-sql` rather than from the Python HTTP endpoints.
+
+## Data storage
+
+| Context | Storage | Location |
+|---|---|---|
+| Desktop (Python) | SQLite + JSON files | `data/` next to the executable |
+| Desktop (Tauri) | SQLite via `plugin-sql` | `wi-mod.db` in Tauri app-data dir |
+| Web demo | IndexedDB | Browser origin storage |
+| Images / cache | Filesystem | `data/images/`, `data/cache/` |
+
+The `StorageAdapter` interface in `src/services/storage/StorageAdapter.ts` abstracts over these backends so the UI code stays identical in both runtimes.
+
+<Note>
+  wi-mod tries to bind its local HTTP server on **port 47621**. If that port is
+  already in use, `app.py` calls `make_server(app, 0)` which lets the OS assign
+  a random free port. The URL is then passed directly to the pywebview window,
+  so the frontend always connects to the correct address.
+</Note>
+
+## Tauri window setup
+
+`tauri.conf.json` defines two windows:
+
+- **`main`** — the primary 1200 × 800 application window, starts hidden (`"visible": false`) until `destroy_splashscreen` is invoked.
+- **`splashscreen`** — a 500 × 500 frameless transparent window that is shown immediately on launch and dismissed once `lib.rs` has finished initializing app state.
+
+## Python entrypoint (`app.py`)
+
+`app.py` handles the full lifecycle of the Python runtime:
+
+1. Instantiates `App(ROOT / "data")` which opens the library, loads API keys, ensures default games.
+2. Starts `make_server(app, 47621)` in a background `threading.Thread`.
+3. Opens a pywebview window pointing at `http://127.0.0.1:{port}/` with a custom JS API (`_Host`) that exposes `quit`, `tray`, `pick_exe`, `pick_folder`, `pick_save`, `pick_zip` to the frontend.
+4. Sets up a themed system-tray icon (colours driven by `_THEMES`, keyed to the active platform theme such as `nexus`, `modrinth`, `curseforge`, `steam`, `moddb`, or `rawg`).
+5. On exit, shuts down the HTTP server and joins the thread.

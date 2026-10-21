@@ -1,0 +1,197 @@
+---
+title: "Migrating wi-mod from Python to Tauri v2"
+sidebarTitle: "Tauri Migration"
+description: "wi-mod is migrating from Python/pywebview to Tauri v2 and Rust. Follow the migration plan: storage, HTTP proxy, CI, and eventual Python removal."
+---
+
+wi-mod is actively migrating its desktop backend from **Python 3 + pywebview** to **Tauri v2 + Rust**. The goal is a single lightweight native binary that uses Rust for system integration, reqwest for all external HTTP, and `@tauri-apps/plugin-sql` for local SQLite storage — while keeping the existing `web/` UI completely unchanged. The Python shell (`app.py`, `wi_mod/`) remains the shipping runtime until the cutover is complete.
+
+## Migration plan
+
+<Steps>
+  <Step title="Verify the Tauri dev loop">
+    Run `npm run tauri:dev`. The Tauri shell opens the static `web/` UI with no Python server involved. This step is already working — it validates that the shared UI loads correctly inside Tauri's WebView.
+
+    ```bash
+    npm install
+    npm run tauri:dev
+    ```
+  </Step>
+
+  <Step title="Replace library, settings, and mod endpoints with Tauri storage">
+    The Python endpoints `/api/library`, `/api/settings`, and `/api/mods` currently return data from the Python `Library` class. In the Tauri path these are replaced by `TauriStorageAdapter`, which reads and writes to `sqlite:wi-mod.db` through `@tauri-apps/plugin-sql`.
+
+    ```typescript
+    // src/services/storage/TauriStorageAdapter.ts
+    const DB_URL = "sqlite:wi-mod.db";
+
+    async getMods(gameId?: string): Promise<Mod[]> { ... }
+    async saveMod(mod: Mod): Promise<void> { ... }
+    async getSettings(): Promise<Settings> { ... }
+    async saveSettings(settings: Settings): Promise<void> { ... }
+    ```
+
+    The runtime adapter is selected automatically via `isTauriRuntime()` in `src/services/runtime.ts`:
+
+    ```typescript
+    export function isTauriRuntime(): boolean {
+      return typeof window !== "undefined" && window.__TAURI_INTERNALS__ !== undefined;
+    }
+    ```
+  </Step>
+
+  <Step title="Replace Python HTTP proxy endpoints with the Rust fetch_external_api command">
+    The Python server proxies Nexus, CurseForge, Steam, RAWG, and Modrinth requests to avoid CORS and keep API keys server-side. In the Tauri path this is handled by the `fetch_external_api` Tauri command in `src-tauri/src/http_proxy.rs`.
+
+    The frontend calls it through the unified `fetchExternalApi()` helper:
+
+    ```typescript
+    // src/services/api/fetchExternal.ts
+    export async function fetchExternalApi(
+      request: FetchExternalRequest,
+    ): Promise<FetchExternalResponse> {
+      if (isTauriRuntime()) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        return invoke<FetchExternalResponse>("fetch_external_api", { request });
+      }
+      return webFetchExternal(request); // browser fetch fallback for web demo
+    }
+    ```
+  </Step>
+
+  <Step title="Remove the Python runtime">
+    Once steps 2 and 3 are complete and the Tauri path covers all API surface, delete the legacy pieces:
+
+    - `app.py`
+    - `wi_mod/` (entire Python package)
+    - `requirements.txt`
+    - `scripts/wi-mod.bat`
+    - `scripts/wi-mod.spec` (PyInstaller)
+
+    The release workflow is then simplified to only build and publish Tauri artifacts.
+  </Step>
+
+  <Step title="Update the release workflow to Tauri-only">
+    After the Python removal, edit `.github/workflows/build-and-release.yml` to drop any steps that reference `wi_mod/__init__.py` for version detection and remove the PyInstaller build path. The `publish-tauri` job already builds NSIS, deb, rpm, and AppImage targets from `src-tauri/`.
+  </Step>
+</Steps>
+
+## Storage adapter pattern
+
+The `StorageAdapter` interface in `src/services/storage/StorageAdapter.ts` is the contract both implementations must satisfy:
+
+```typescript
+export interface StorageAdapter {
+  init(): Promise<void>;
+
+  getMods(gameId?: string): Promise<Mod[]>;
+  saveMod(mod: Mod): Promise<void>;
+  deleteMod(modId: string): Promise<void>;
+
+  getSettings(): Promise<Settings>;
+  saveSettings(settings: Settings): Promise<void>;
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="TauriStorageAdapter" icon="database">
+    Uses `@tauri-apps/plugin-sql` to open `sqlite:wi-mod.db`. Runs `CREATE TABLE IF NOT EXISTS` statements on `init()` matching the Rust-side migrations, then uses parameterized `INSERT … ON CONFLICT DO UPDATE` for upserts. Active when `isTauriRuntime()` returns `true`.
+  </Card>
+  <Card title="WebStorageAdapter" icon="browser">
+    Uses the browser's `IndexedDB` API with a `gameDomain` index on the `mods` object store. Falls back to `localStorage` if IndexedDB is unavailable. Used for the GitHub Pages live demo at `wiarch.github.io/wi-mod`.
+  </Card>
+</CardGroup>
+
+## HTTP proxy (`fetch_external_api`)
+
+The `fetch_external_api` Tauri command in `src-tauri/src/http_proxy.rs` accepts the following payload:
+
+```rust
+pub struct FetchExternalRequest {
+    pub provider: String,   // "nexus" | "curseforge" | "steam" | "rawg" | "modrinth"
+    pub method: String,     // "GET" | "POST"
+    pub path: String,       // relative path, e.g. "/v1/games/skyrim/mods/1.json"
+    pub query: HashMap<String, String>,
+    pub body: Option<Value>,
+    pub api_key: Option<String>,
+    pub headers: HashMap<String, String>,
+}
+```
+
+Auth headers are injected per provider before the `reqwest` call goes out:
+
+| Provider | Auth mechanism |
+|---|---|
+| Nexus Mods | `apikey: <key>` header |
+| CurseForge | `x-api-key: <key>` header |
+| Steam | `key=<key>` query parameter |
+| RAWG | `key=<key>` query parameter |
+| Modrinth | No key required |
+
+The command returns a typed `FetchExternalResponse` with `status`, `ok`, `headers`, and `body` fields. Non-2xx responses are converted into Tauri command errors, surfaced to the frontend as rejected promises.
+
+## Tauri commands registered in `lib.rs`
+
+```rust
+.invoke_handler(tauri::generate_handler![
+    http_proxy::fetch_external_api,
+    destroy_splashscreen
+])
+```
+
+- **`fetch_external_api`** — asynchronous HTTP proxy to external mod APIs (see above).
+- **`destroy_splashscreen`** — initializes app state on disk, emits `"splash-finish"` to the splash window, waits 720 ms, closes the splash, then shows and focuses the main window.
+
+## SQLite migrations
+
+The Rust side declares migrations via `tauri_plugin_sql::Migration` in `lib.rs`. The same schema is also applied defensively by `TauriStorageAdapter` on first `init()` in TypeScript:
+
+```sql
+CREATE TABLE IF NOT EXISTS mods (
+  id TEXT PRIMARY KEY NOT NULL,
+  game_domain TEXT NOT NULL DEFAULT '',
+  payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mods_game ON mods(game_domain);
+CREATE TABLE IF NOT EXISTS settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  payload TEXT NOT NULL
+);
+```
+
+Mod records store the full mod object as a JSON blob in `payload`; `game_domain` is indexed separately for efficient per-game queries.
+
+## CI/CD pipeline
+
+The `.github/workflows/build-and-release.yml` workflow is driven by a `detect` job that inspects the current `package.json` version and compares it against the previous commit:
+
+| Trigger | Web deploy (gh-pages) | Desktop Tauri build + Release draft |
+|---|---|---|
+| Push to `main` (version unchanged) | ✅ always | ❌ skipped |
+| Push to `main` (version bumped) | ✅ | ✅ |
+| Tag `v*` | ✅ | ✅ |
+| Manual (`workflow_dispatch`) | controlled by `publish_web` input | controlled by `force_compile` input |
+
+Desktop builds run in parallel on `windows-latest` (NSIS installer) and `ubuntu-22.04` (deb, rpm, AppImage). Artifacts are attached to a **draft** GitHub Release, which is then published by the `publish-release` job once all matrix builds succeed.
+
+## Legacy pieces to keep until cutover
+
+The following files must not be deleted until the Tauri storage and HTTP-proxy steps are complete:
+
+| File / directory | Role | Remove when |
+|---|---|---|
+| `app.py` + `wi_mod/` | Shipping Python runtime | Tauri path covers all API surface |
+| `requirements.txt` | Python deps for PyInstaller | Python removed |
+| `scripts/wi-mod.bat`, `scripts/wi-mod.spec` | Dev launcher + PyInstaller build | Python removed |
+| `docs/app` | Limited GitHub Pages demo (Python-backed) | `dist/` fully replaces it |
+
+<Warning>
+  Version numbers must be kept in sync across **three** files simultaneously.
+  Bumping only one will cause the CI `detect` job to produce inconsistent tags
+  or skip the desktop build entirely.
+
+  Always update these together:
+  - `wi_mod/__init__.py` — `__version__ = "x.y.z"`
+  - `package.json` — `"version": "x.y.z"`
+  - `src-tauri/tauri.conf.json` — `"version": "x.y.z"`
+</Warning>

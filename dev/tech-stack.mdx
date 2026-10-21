@@ -1,0 +1,91 @@
+---
+title: "wi-mod Tech Stack: Python, Rust, TypeScript, and Vite"
+sidebarTitle: "Tech Stack"
+description: "wi-mod's technology choices: Python 3 with pywebview for the current desktop runtime, Tauri v2 and Rust for the migration target, and a shared HTML/JS/CSS frontend."
+---
+
+wi-mod uses a dual-runtime approach: the currently shipping desktop binary is built with **Python 3 + pywebview**, while the in-progress migration target is **Tauri v2 + Rust**. Both runtimes serve the same `web/` UI layer, which is plain HTML, CSS, and JavaScript with no framework dependency. The Vite + TypeScript pipeline in `src/` is used exclusively for the Tauri build path and the GitHub Pages web demo.
+
+## Technology overview
+
+| Layer | Technology | Key files |
+|---|---|---|
+| Desktop (current) | Python 3 + pywebview ≥ 5.0 | `app.py`, `wi_mod/`, `requirements.txt` |
+| Desktop (target) | Rust + Tauri v2 | `src-tauri/`, migration in progress |
+| Frontend UI | HTML5, CSS3, JavaScript | `web/` — shared by both runtimes |
+| Frontend build | Vite + TypeScript | `src/`, `vite.config.js`, `tsconfig.json` |
+| Database (desktop) | SQLite | Python `sqlite3` stdlib / Tauri `plugin-sql` |
+| Database (web demo) | IndexedDB | `src/services/storage/WebStorageAdapter.ts` |
+| API integrations | Python stdlib `urllib` / Rust `reqwest` | `wi_mod/nexus.py`, `src-tauri/src/http_proxy.rs` |
+| CI/CD | GitHub Actions | `.github/workflows/build-and-release.yml` |
+
+## Python dependencies
+
+`requirements.txt` deliberately keeps the dependency surface minimal — only two packages are required:
+
+```
+pywebview>=5.0
+pyinstaller>=6.0
+```
+
+All HTTP communication in the Python runtime uses the standard-library `urllib.request` module. There are no third-party HTTP libraries such as `requests` or `httpx`.
+
+## Node dependencies
+
+Declared in `package.json` (version `0.23.0`):
+
+```json
+{
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-sql": "^2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "typescript": "^5.8",
+    "vite": "^6"
+  }
+}
+```
+
+- **`@tauri-apps/api`** — `invoke()`, window management, and the `isTauriRuntime()` detection via `window.__TAURI_INTERNALS__`.
+- **`@tauri-apps/plugin-sql`** — TypeScript bindings for the Rust SQLite plugin; used by `TauriStorageAdapter`.
+
+## Rust crates
+
+Declared in `src-tauri/Cargo.toml` (Rust edition 2021, MSRV 1.77):
+
+```toml
+[dependencies]
+tauri             = { version = "2", features = [] }
+tauri-plugin-sql  = { version = "2", features = ["sqlite"] }
+serde             = { version = "1", features = ["derive"] }
+serde_json        = "1"
+reqwest           = { version = "0.12", default-features = false,
+                      features = ["json", "rustls-tls"] }
+```
+
+The release profile enables `lto = true` and `codegen-units = 1` for maximum binary size reduction, and `panic = "abort"` to remove the unwinding machinery.
+
+<CardGroup cols={2}>
+  <Card title="Python runtime" icon="python">
+    `app.py` starts a `ThreadingHTTPServer` bound to `127.0.0.1:47621`, spawns it in a background thread, then opens a frameless pywebview window. The `_Host` JS API exposes file-picker dialogs and tray control back to the frontend.
+  </Card>
+  <Card title="Tauri runtime" icon="rust">
+    `src-tauri/src/lib.rs` registers two Tauri commands — `fetch_external_api` and `destroy_splashscreen` — and wires up the SQL plugin with SQLite migrations before the app window opens.
+  </Card>
+  <Card title="Shared UI" icon="browser">
+    `web/` contains the canonical `index.html`, `app.js`, and `styles.css`. Both runtimes load from this directory. The Vite build copies it into `dist/` for the Tauri and GitHub Pages paths.
+  </Card>
+  <Card title="Storage adapters" icon="database">
+    `StorageAdapter.ts` defines the common interface. `TauriStorageAdapter` talks to SQLite through `plugin-sql`; `WebStorageAdapter` uses IndexedDB (with a LocalStorage fallback). `isTauriRuntime()` selects the right adapter at startup.
+  </Card>
+</CardGroup>
+
+<Note>
+  The Python runtime performs all external HTTP calls with the standard-library
+  `urllib.request` module — no third-party HTTP library is involved. In the Tauri
+  runtime, all external HTTP is handled by `reqwest` in Rust inside
+  `http_proxy.rs`, which also handles CORS avoidance and per-provider auth-header
+  injection.
+</Note>

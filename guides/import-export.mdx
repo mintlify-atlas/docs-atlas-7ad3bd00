@@ -1,0 +1,170 @@
+---
+title: "Import and Export Your wi-mod Library"
+sidebarTitle: "Import / Export"
+description: "Back up your entire mod library or a filtered subset as a portable .wimod.zip bundle. Import it on any machine to restore mods instantly."
+---
+
+The import/export system lets you back up, share, and migrate your wi-mod library across machines. A single `.wimod.zip` bundle carries the full mod manifest — names, descriptions, categories, platform links, modpack memberships — and, optionally, any locally stored mod archive files and cover images. Importing on another machine merges the bundle into the existing library non-destructively.
+
+## Export Scopes
+
+Every export has a scope that controls which mods are included in the bundle:
+
+| Scope | Description |
+|---|---|
+| `all` | Every mod in the library, all modpacks, and the full game catalog |
+| `platform` | All mods for one platform (e.g. `Nexus`, `Modrinth`, `CurseForge`) |
+| `game` | All mods belonging to one game domain (e.g. `skyrimspecialedition`) |
+| `modpack` | All mods assigned to one modpack, plus the modpack definition |
+| `selected` | A manually chosen set of mods identified by their local IDs |
+
+For `platform`, `game`, and `modpack` scopes, the catalog slice written to the bundle is trimmed to only include games, modpacks, marks, and categories that are relevant to the exported subset.
+
+## Exporting Your Library
+
+<Steps>
+  <Step title="Open the Export dialog">
+    Click **Export** in the wi-mod toolbar or sidebar to open the export panel.
+  </Step>
+  <Step title="Choose a scope">
+    Select one of the five scopes: **All**, **Platform**, **Game**, **Modpack**, or **Selected**. For Platform, Game, and Modpack scopes, choose the specific value from the dropdown that appears.
+  </Step>
+  <Step title="Choose a save location">
+    Pick where to save the bundle. The default save directory is:
+
+    ```
+    Documents/wi-mod/packs/
+    ```
+
+    This folder is created automatically if it doesn't exist. If `Documents/` is not writable (e.g. on a restricted system), wi-mod falls back to `data/packs/` next to the executable.
+  </Step>
+  <Step title="wi-mod creates the bundle">
+    wi-mod calls:
+
+    ```
+    POST /api/export
+    ```
+
+    Request body:
+
+    ```json
+    {
+      "scope": "game",
+      "game": "skyrimspecialedition",
+      "dest": "C:/Users/you/Documents/wi-mod/packs/skyrim-backup.zip"
+    }
+    ```
+
+    The bundle filename follows the pattern `wi-mod-{label}-{YYYYMMDD-HHMM}.zip`. For a `modpack` export the label becomes `wi-mod-pack-{modpackName}`. For a `selected` export it is `wi-mod-seleccion`.
+
+    The ZIP contains a `manifest.json` at the root, plus optional subdirectories for mod files (`mods/`), cover images (`fichas/`), modpack images (`modpacks/`), and catalog marks (`categories/`, `platforms/`).
+  </Step>
+</Steps>
+
+## Archive Format
+
+| Field | Value |
+|---|---|
+| `format` | `"wimod"` |
+| `version` | `2` |
+
+The `manifest.json` inside every bundle contains:
+
+```json
+{
+  "format": "wimod",
+  "version": 2,
+  "exportedAt": "2025-06-01T12:00:00Z",
+  "scope": { "kind": "all", "platform": null, "game": null, "modpack": null },
+  "catalog": { "games": [], "platforms": [], "categories": [], "marks": {} },
+  "modpacks": [],
+  "mods": []
+}
+```
+
+Each mod entry in the `mods` array is a full copy of the library record, with image paths rewritten to relative paths inside the ZIP (e.g. `fichas/my-mod/picture.jpg`) and downloaded file paths rewritten under `mods/my-mod/filename.jar`.
+
+## Previewing Before Import
+
+Before committing an import, wi-mod can show you a summary of what the bundle contains:
+
+```
+POST /api/import/preview
+```
+
+Send either a JSON body with the archive path:
+
+```json
+{
+  "path": "/home/you/Downloads/wi-mod-20250601-1200.zip"
+}
+```
+
+Or upload the file directly as `multipart/form-data`. The response is a `preview` object:
+
+```json
+{
+  "mods": 47,
+  "games": [
+    { "id": "skyrimspecialedition", "name": "Skyrim Special Edition", "count": 32 },
+    { "id": "fallout4", "name": "Fallout 4", "count": 15 }
+  ],
+  "modpacks": [
+    { "id": "abc123", "name": "Survival Build", "game": "Skyrim Special Edition", "count": 20 }
+  ]
+}
+```
+
+## Importing a Bundle
+
+<Steps>
+  <Step title="Open the Import dialog">
+    Click **Import** in the wi-mod toolbar to open the import panel.
+  </Step>
+  <Step title="Select the .wimod.zip file">
+    Browse to or drag in a `.wimod.zip` bundle previously created by wi-mod. Files that were not created by wi-mod (wrong `format` field in `manifest.json`) are rejected with an error.
+  </Step>
+  <Step title="Preview the contents">
+    wi-mod calls `POST /api/import/preview` and displays the mod count, affected games, and any modpacks included in the bundle.
+  </Step>
+  <Step title="Choose an import scope (optional)">
+    You can narrow the import to a subset of the bundle — for example, import only the mods from one game domain even if the bundle contains several.
+  </Step>
+  <Step title="Confirm — wi-mod merges the library">
+    Click **Import**. wi-mod calls:
+
+    ```
+    POST /api/import
+    ```
+
+    Request body (JSON path variant):
+
+    ```json
+    {
+      "path": "/home/you/Downloads/wi-mod-20250601-1200.zip",
+      "scope": "all"
+    }
+    ```
+
+    The response reports how many mods were added, updated, and skipped:
+
+    ```json
+    {
+      "result": {
+        "added": 12,
+        "updated": 35,
+        "skipped": 0,
+        "modpacks": 2
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  Importing is non-destructive. If a mod in the bundle already exists in your library (matched by Nexus game domain + mod ID, or by page URL for Modrinth/CurseForge mods), wi-mod updates the metadata and merges any new files — it never creates duplicates or deletes existing data.
+</Tip>
+
+<Note>
+  **Portable USB use.** If you run wi-mod from a USB drive, keep the `data/` folder next to the executable. wi-mod stores its SQLite database, downloaded mod files, and images inside `data/`. Moving the entire `data/` folder carries your full library with you. The default packs directory (`Documents/wi-mod/packs/`) is machine-specific, but the fallback `data/packs/` location stays on the drive.
+</Note>

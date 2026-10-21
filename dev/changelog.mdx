@@ -1,0 +1,79 @@
+---
+title: "wi-mod Changelog"
+sidebarTitle: "Changelog"
+description: "Release history for wi-mod. Current version is 0.23.0. Tracks features, fixes, and architectural changes across releases."
+---
+
+This page summarises the architectural milestones and release history for wi-mod. The project follows [Conventional Commits](https://www.conventionalcommits.org/), so every merged change is traceable by type (`feat`, `fix`, `chore`, etc.). The current stable release is **0.23.0**. Full per-commit release notes for each version are published on the GitHub Releases page.
+
+For the complete list of releases and downloadable artifacts, see the [GitHub Releases page](https://github.com/wiarch/wi-mod/releases).
+
+<Note>
+  wi-mod is currently at version **0.23.0** and is pre-1.0. The public API surface, storage format, and runtime architecture may change before a 1.0 release is cut. In particular, the Python runtime is present only during the Tauri migration and will be removed once the migration is complete.
+</Note>
+
+---
+
+## Architecture milestones
+
+### 0.23.0 — Current release
+
+The **0.23.0** release ships a dual-runtime application. The Python/pywebview stack (`app.py` + `wi_mod/`) is the stable, shipping desktop shell. The Tauri v2 path (`src-tauri/` + Vite `src/`) is functional and serves the same `web/` UI through a native Rust-backed window.
+
+Key characteristics of this release:
+
+- **Storage adapter pattern** — `getStorageAdapter()` in `src/services/storage/` routes reads and writes to either Tauri SQLite (`tauri-plugin-sql`) or browser IndexedDB, depending on the runtime.
+- **HTTP proxy abstraction** — `fetchExternalApi()` in `src/services/api/` dispatches to either the Rust `fetch_external_api` Tauri command (via `reqwest`) or the browser `fetch` API, keeping the frontend code runtime-agnostic.
+- **Web demo** — The Vite `dist/` is deployed to GitHub Pages on every push to `main`, providing a fully functional browser-based demo backed by IndexedDB.
+- **CI artifacts** — The `build-and-release.yml` workflow produces Windows NSIS installers and Linux AppImage/deb/rpm bundles via Tauri on every `v*` tag.
+
+### Tauri migration — In progress
+
+The ongoing migration replaces the Python HTTP server layer with native Rust commands:
+
+| Component being replaced | Replacement |
+|--------------------------|-------------|
+| `app.py` + `wi_mod/server.py` (HTTP + pywebview) | Rust Tauri commands in `src-tauri/src/` |
+| Python SQLite access | `tauri-plugin-sql` with SQLite |
+| Python API proxy routes | `fetch_external_api` command using `reqwest` |
+| `scripts/wi-mod.spec`, `scripts/wi-mod.bat`, `requirements.txt` | Removed at cutover |
+
+The migration order is: (1) stabilise `tauri:dev` with the static UI, (2) replace `/api/library`, `/api/settings`, and `/api/mods` endpoints with storage adapter calls, (3) replace Python API proxies with `fetchExternalApi`, (4) remove the Python runtime and cut a 1.0 release.
+
+### Pre-1.0 — Python runtime removal
+
+When the Tauri migration completes, `app.py`, `wi_mod/`, `requirements.txt`, and the `scripts/` PyInstaller helpers will be removed from the repository. The sole distribution artifact will be the Tauri binary. There is no scheduled date for this cutover; progress is tracked in [docs/MIGRATION-TAURI.md](https://github.com/wiarch/wi-mod/blob/main/docs/MIGRATION-TAURI.md).
+
+---
+
+## Commit convention reminder
+
+All changes to wi-mod follow [Conventional Commits](https://www.conventionalcommits.org/). Use the correct type prefix so that automated changelogs and the CI version-detection logic work correctly:
+
+| Type | Purpose |
+|------|---------|
+| `feat` | New user-visible feature |
+| `fix` | Bug or regression fix |
+| `refactor` | Code restructure, no behaviour change |
+| `chore` | Tooling, scripts, repo maintenance |
+| `docs` | Documentation only |
+| `perf` | Performance improvement |
+| `build` | Packaging — Vite, Tauri, PyInstaller |
+| `ci` | GitHub Actions workflow changes |
+
+<Tip>
+  Before starting a large feature or architectural change, open a GitHub issue first to confirm scope and avoid duplicating work that may already be in progress on the Tauri migration branch.
+</Tip>
+
+---
+
+## Links
+
+<CardGroup cols={2}>
+  <Card title="GitHub Releases" icon="tag" href="https://github.com/wiarch/wi-mod/releases">
+    Download artifacts and read full release notes for every published version of wi-mod.
+  </Card>
+  <Card title="Open an Issue" icon="circle-exclamation" href="https://github.com/wiarch/wi-mod/issues">
+    Report a bug, request a feature, or discuss a planned contribution before opening a pull request.
+  </Card>
+</CardGroup>

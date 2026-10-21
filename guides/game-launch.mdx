@@ -1,0 +1,154 @@
+---
+title: "Launch Games Directly from wi-mod"
+sidebarTitle: "Game Launch"
+description: "Set a game's executable path, detect it automatically, and launch it from wi-mod's library view — with mods already deployed."
+---
+
+wi-mod can detect and launch game executables directly from the library view. Once a launch path is set for a game, a single click opens the game — no need to switch to Steam, GOG Galaxy, or a file browser. For Minecraft profiles, wi-mod goes further and builds the full Java classpath before spawning the JVM.
+
+## Setting the Launch Path
+
+<Steps>
+  <Step title="Select a game in the catalog">
+    Open the **Games** section in wi-mod and select the game you want to configure. The game must already be in your catalog. If it isn't, add it first via the catalog panel.
+  </Step>
+  <Step title="Auto-detect the executable">
+    Click **Detect**. wi-mod calls:
+
+    ```
+    POST /api/game/detect
+    ```
+
+    Request body:
+
+    ```json
+    {
+      "gameDomain": "skyrimspecialedition"
+    }
+    ```
+
+    The response contains a `candidates` array of file-system paths ranked by confidence score. Each candidate includes:
+
+    ```json
+    {
+      "path": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Skyrim Special Edition",
+      "name": "Skyrim Special Edition",
+      "score": 120,
+      "isFile": false,
+      "kind": "folder"
+    }
+    ```
+
+    Pick the path that matches your installation.
+  </Step>
+  <Step title="Or paste the path manually">
+    If auto-detection doesn't find the right location, type or paste the full path to the game's executable (`.exe` on Windows) or folder into the path field.
+  </Step>
+  <Step title="Save the path">
+    wi-mod persists the chosen path by calling:
+
+    ```
+    POST /api/game/launch-path
+    ```
+
+    Request body:
+
+    ```json
+    {
+      "gameDomain": "skyrimspecialedition",
+      "launchPath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Skyrim Special Edition\\SkyrimSE.exe"
+    }
+    ```
+
+    The path is stored in the game's catalog entry and used by all subsequent launch calls.
+  </Step>
+</Steps>
+
+## Auto-Detection Logic
+
+`POST /api/game/detect` searches common install locations across all mounted drives. The search is ordered by confidence:
+
+1. **Steam libraries** — wi-mod parses `libraryfolders.vdf` from every known Steam path and scores each `steamapps/common` subfolder against the game name. A Steam folder with a matching executable is returned immediately if the confidence score is high enough.
+2. **Other priority roots** — `Program Files`, `Program Files (x86)`, GOG Games (`C:\GOG Games`, `D:\GOG Games`), Epic Games, Xbox Games, and common custom locations like `C:\Games` and `D:\Juegos`.
+3. **Full drive sweep** — if no strong match is found in the priority roots, wi-mod performs a depth-limited walk of all available drive letters.
+
+Entries with names that match setup utilities, crash handlers, overlay processes, or other non-game executables are automatically filtered out. Subfolders of an already-matched installation folder are suppressed from the results to keep the candidate list clean.
+
+The search has a configurable timeout (default 45 seconds) and returns at most 16 candidates.
+
+## Launching a Game
+
+```
+POST /api/game/launch
+```
+
+Request body:
+
+```json
+{
+  "gameDomain": "skyrimspecialedition"
+}
+```
+
+wi-mod looks up the stored `launchPath` for the game and delegates to one of two launch methods:
+
+<Tabs>
+  <Tab title="Direct Executable">
+    When `launchPath` points to a `.exe`, `.bat`, or `.cmd` file, wi-mod opens it using the OS shell (`os.startfile` on Windows, `subprocess.Popen` on Linux/macOS). The working directory is set to the file's parent folder.
+
+    If `launchPath` points to a **folder** instead of a file, wi-mod resolves the best playable executable inside that folder automatically — preferring files whose names match the game tokens and down-ranking anything that looks like a launcher helper.
+
+    The path is also saved back to the catalog if it differs from the previously stored value (excluding Steam URLs).
+  </Tab>
+  <Tab title="Steam URL">
+    When a game in the catalog has a `steamAppId` and no `launchPath` is set, wi-mod constructs a Steam protocol URL:
+
+    ```
+    steam://run/{steamAppId}
+    ```
+
+    This URL is opened with the system's default handler — typically the Steam client — which launches the game through Steam's overlay and DRM layer.
+
+    You can also store a Steam URL as the `launchPath` directly. Any path that starts with `steam://` is opened via the OS shell rather than spawned as a subprocess.
+  </Tab>
+</Tabs>
+
+The response on success:
+
+```json
+{
+  "ok": true,
+  "path": "C:\\...\\SkyrimSE.exe",
+  "catalog": { ... },
+  "game": { ... }
+}
+```
+
+If no launch path is configured and the game has no `steamAppId`, the response is `409` with `"error": "missing_launch"` and the game object so the UI can prompt you to set a path.
+
+## Minecraft Launch
+
+Minecraft profiles use a separate launch flow that builds a full Java classpath:
+
+```
+POST /api/minecraft/launch
+```
+
+See the [Minecraft guide](/guides/minecraft) for the full walkthrough, including offline UUID derivation, classpath construction from the version JSON, and JVM argument expansion.
+
+When you trigger `POST /api/game/launch` for a game domain that starts with `minecraft`, or when the stored `launchPath` contains `MinecraftLauncher` or `minecraft.exe`, wi-mod automatically routes through the Minecraft launch path. You must include the profile `instance` name in the request body in this case:
+
+```json
+{
+  "gameDomain": "minecraft",
+  "instance": "My Fabric 1.21"
+}
+```
+
+<Tip>
+  Deploy your mods before launching. Go to the **Deployment** page, select the game, and click **Deploy** to hard-link or copy the active mod files into the game's Data folder. If you launch without deploying, the game will run without the mods that haven't been deployed yet. For Minecraft profiles, wi-mod stages `.jar` files automatically at launch time — no manual deployment step is needed.
+</Tip>
+
+<Note>
+  **Windows system tray.** On Windows, closing the wi-mod window by default minimizes the app to the system tray rather than quitting it. The REST API continues running in the background so any in-progress downloads or operations are not interrupted. Use the tray icon to reopen the window or to fully quit wi-mod. You can change this behaviour in **Settings → Quit mode**.
+</Note>

@@ -1,0 +1,160 @@
+---
+title: "Build and Package wi-mod for Distribution"
+sidebarTitle: "Building"
+description: "Build wi-mod as a Tauri portable executable (Windows .exe, Linux AppImage/deb/rpm) or as a legacy PyInstaller bundle. Covers CI/CD and release tagging."
+---
+
+wi-mod ships through two build paths. The **Tauri build** is the primary distribution path — it compiles the Rust backend, bundles the Vite frontend, and produces native installers for Windows and Linux. The **PyInstaller build** is the legacy path that produces a portable `dist/wi-mod/` directory using the Python runtime; it remains available while the Tauri migration is in progress. Both paths share the same `web/` UI source.
+
+---
+
+## Tauri build
+
+<Steps>
+  <Step title="Install Node dependencies">
+    ```bash
+    npm install
+    ```
+
+    Installs `@tauri-apps/cli`, `@tauri-apps/api`, `@tauri-apps/plugin-sql`, and Vite. Must be run from the repository root where `package.json` lives.
+  </Step>
+
+  <Step title="Run the Tauri build">
+    ```bash
+    npm run tauri:build
+    ```
+
+    This runs `tauri build`, which internally calls `npm run build` (Vite frontend compilation into `dist/`) and then invokes `cargo build --release` to compile the Rust backend in `src-tauri/`. Expect a longer first build while Cargo downloads and compiles crate dependencies.
+  </Step>
+
+  <Step title="Locate the output artifacts">
+    After a successful build the release artifacts are placed under `src-tauri/target/release/`:
+
+    | Platform | Primary artifact | Bundle artifacts |
+    |----------|-----------------|-----------------|
+    | Windows | `wi-mod.exe` | NSIS installer (`.exe`) via `nsis` target |
+    | Linux | `wi-mod` | `.AppImage`, `.deb`, `.rpm` |
+
+    Bundle targets are configured in `src-tauri/tauri.conf.json`:
+
+    ```json
+    "bundle": {
+      "active": true,
+      "targets": ["nsis", "deb", "rpm", "appimage"]
+    }
+    ```
+  </Step>
+
+  <Step title="Use the portable executable">
+    Tauri builds are portable by design. To use the plain executable outside an installer, place the `data/` folder next to `wi-mod.exe` (or the Linux binary) in the same directory. wi-mod will detect `data/` at startup and use it for its SQLite database and API key configuration.
+
+    ```
+    my-wi-mod/
+    ├── wi-mod.exe        ← compiled executable
+    └── data/
+        └── keys.json     ← optional API key configuration
+    ```
+  </Step>
+</Steps>
+
+---
+
+## PyInstaller build (legacy)
+
+<Steps>
+  <Step title="Install Python dependencies">
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    This installs `pywebview>=5.0` and `pyinstaller>=6.0`.
+  </Step>
+
+  <Step title="Run PyInstaller">
+    Run from the **repository root**:
+
+    ```bash
+    pyinstaller scripts/wi-mod.spec --noconfirm
+    ```
+
+    The spec file at `scripts/wi-mod.spec` bundles `app.py` as the entry point, includes the `web/` directory as data, and collects the `webview`, `pythonnet`, and `clr_loader` packages automatically.
+  </Step>
+
+  <Step title="Locate the output">
+    PyInstaller writes the result to `dist/wi-mod/`. The folder is self-contained and portable — copy it anywhere and run the executable inside it. No Python installation is required on the target machine.
+
+    ```
+    dist/
+    └── wi-mod/
+        └── wi-mod.exe   ← Windows portable executable
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Versioning
+
+Every release must bump the version string in all three locations simultaneously. Failing to update all three will result in mismatched version identifiers between the Python module, the Node package, and the compiled Tauri binary.
+
+| File | Key |
+|------|-----|
+| `wi_mod/__init__.py` | `__version__ = "X.Y.Z"` |
+| `package.json` | `"version": "X.Y.Z"` |
+| `src-tauri/tauri.conf.json` | `"version": "X.Y.Z"` |
+
+Example of a consistent bump to `0.24.0`:
+
+```python
+# wi_mod/__init__.py
+__version__ = "0.24.0"
+```
+
+```json
+// package.json
+{
+  "version": "0.24.0"
+}
+```
+
+```json
+// src-tauri/tauri.conf.json
+{
+  "version": "0.24.0"
+}
+```
+
+<Warning>
+  Bumping only one or two of the three version files will cause the CI pipeline to build with mismatched versions. The `detect` job in `build-and-release.yml` reads both `package.json` and `wi_mod/__init__.py` to decide whether to trigger a desktop compile — a partial bump can cause it to compile with the wrong tag or skip the build entirely.
+</Warning>
+
+---
+
+## GitHub Actions CI
+
+The `build-and-release.yml` workflow handles both the web demo deployment and desktop artifact publication.
+
+| Trigger | Web demo (GitHub Pages) | Desktop build + GitHub Release |
+|---------|------------------------|-------------------------------|
+| Push to `main` | Always deployed | Only if version changed in `package.json` or `wi_mod/__init__.py` |
+| Tag `v*` | Yes | Yes — full Tauri build on Windows and Linux, draft Release with all artifacts |
+| Manual (`workflow_dispatch`) | Controlled by `publish_web` input | Controlled by `force_compile` input |
+
+**To publish a new release:**
+
+1. Bump the version in all three files (see [Versioning](#versioning) above).
+2. Commit with a conventional commit message, e.g. `chore(repo): bump version to 0.24.0`.
+3. Push the commit, then create and push a version tag:
+
+    ```bash
+    git tag v0.24.0
+    git push --tags
+    ```
+
+4. The workflow builds Tauri artifacts for `windows-latest` and `ubuntu-22.04`, uploads them to a draft GitHub Release, and then publishes the draft automatically once both platform builds succeed.
+
+**To force a desktop build without a version bump**, use the manual trigger in the GitHub Actions UI and enable the `force_compile` option. You can also supply an explicit tag string via the `tag` input field.
+
+<Tip>
+  To verify the Vite frontend build without triggering a Rust compilation, run `npm run build` on its own. This compiles `src/` into `dist/` and is fast enough for iterating on UI changes.
+</Tip>
